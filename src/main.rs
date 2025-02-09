@@ -38,7 +38,7 @@ fn main() {
         let mut code_blocks: Vec<String> = Vec::new(); // Reset code_blocks for each interaction
 
         let mut input = Input::<String>::with_theme(&ColorfulTheme::default())
-            .with_prompt("N1ptic") // Add newline before prompt
+            .with_prompt(whoami::realname()) // Add newline before prompt
             .completion_with(&completion)
             .history_with(&mut history)
             .interact_text()
