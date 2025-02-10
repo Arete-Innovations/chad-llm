@@ -1,5 +1,4 @@
 use crate::openai;
-use crate::commands;
 use crate::history;
 use crate::MyCompletion;
 
@@ -19,6 +18,8 @@ pub struct Application {
     pub code_blocks: Vec<String>,
 }
 
+pub const HISTORY_FILE: &str = "session_history.txt";
+
 impl Application {
     pub fn new() -> Self {
         Application {
@@ -26,7 +27,7 @@ impl Application {
             context: Arc::new(Mutex::new(Vec::new())),
             cli_history: BasicHistory::new().max_entries(99).no_duplicates(false),
             cli_completion: MyCompletion::default(),
-            session_history: History::new("session_history.txt"),
+            session_history: History::new(HISTORY_FILE),
             code_blocks: Vec::new(),
         }
     }

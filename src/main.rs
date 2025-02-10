@@ -7,7 +7,6 @@ mod models;
 mod application;
 
 use clipboard::{ClipboardContext, ClipboardProvider};
-use commands::{handle_command, is_command};
 use data::MyCompletion;
 use dialoguer::{theme::ColorfulTheme, Input};
 use openai::send_request;
@@ -47,7 +46,7 @@ fn main() -> ! {
 
         // Save the input to history
         {
-            let mut app = gapp.borrow_mut();
+            let app = gapp.borrow_mut();
             if let Err(e) = app.session_history.save_entry(&input) {
                 eprintln!("Failed to save entry: {}", e);
             }
@@ -131,15 +130,7 @@ fn main() -> ! {
             Err(err) => eprintln!("Request failed: {}", err),
         }
 
-        if !app.code_blocks.is_empty() {
-            if let Ok(command_input) = Input::<String>::with_theme(&ColorfulTheme::default())
-                .with_prompt("Enter command")
-                .interact_text()
-            {
-                handle_command(&command_input, &app.code_blocks, "session_history.txt");
-            }
-        }
-        println!(); // Ensure new line after each interaction
-        std::io::stdout().flush().unwrap(); // Ensure stdout is flushed after each interaction
+        println!();
+        std::io::stdout().flush().unwrap();
     }
 }
