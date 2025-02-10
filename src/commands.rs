@@ -14,7 +14,7 @@ pub enum CommandError {
 }
 
 pub trait Command {
-    fn handle_command(&self, args: Vec<&str>, app: Rc<RefCell<Application>>) -> Result<(), CommandError>;
+    fn handle_command(&self, registry: &CommandRegistry, args: Vec<&str>, app: Rc<RefCell<Application>>) -> Result<(), CommandError>;
 }
 
 pub struct CommandRegistry {
@@ -26,6 +26,14 @@ impl CommandRegistry {
         Self {
             commands: HashMap::new(),
         }
+    }
+
+    pub fn get_available_commands(&self) -> Vec<&'static str> {
+        let mut v = Vec::<&'static str>::new();
+        for key in self.commands.keys().into_iter() {
+            v.push(key)
+        }
+        v
     }
 
     pub fn register_command<C: Command + 'static>(&mut self, name: &'static str, command: C) {
@@ -51,12 +59,14 @@ impl CommandRegistry {
 
         self.register_command("delete", CommandDelete);
         self.register_command("del", CommandDelete);
+
+        self.register_command("help", CommandHelp);
     }
 
     pub fn execute_command(&self, name: &str, args: Vec<&str>, app: Rc<RefCell<Application>>) -> Result<(), CommandError> {
         match self.commands.get(&name) {
             Some(x) => {
-                x.handle_command(args, app)
+                x.handle_command(self, args, app)
             },
             None => Err(CommandError::CommandNotFound),
         }
@@ -65,14 +75,14 @@ impl CommandRegistry {
 
 struct CommandExit;
 impl Command for CommandExit {
-    fn handle_command(&self, _args: Vec<&str>, _app: Rc<RefCell<Application>>) -> Result<(), CommandError> {
+    fn handle_command(&self, _registry: &CommandRegistry, _args: Vec<&str>, _app: Rc<RefCell<Application>>) -> Result<(), CommandError> {
         process::exit(0);
     }
 }
 
 struct CommandClear;
 impl Command for CommandClear {
-    fn handle_command(&self, _args: Vec<&str>, _app: Rc<RefCell<Application>>) -> Result<(), CommandError> {
+    fn handle_command(&self, _registry: &CommandRegistry, _args: Vec<&str>, _app: Rc<RefCell<Application>>) -> Result<(), CommandError> {
         println!("\x1B[2J\x1B[1;1H");
         Ok(())
     }
@@ -80,7 +90,7 @@ impl Command for CommandClear {
 
 struct CommandCopy;
 impl Command for CommandCopy {
-    fn handle_command(&self, _args: Vec<&str>, app: Rc<RefCell<Application>>) -> Result<(), CommandError> {
+    fn handle_command(&self, _registry: &CommandRegistry, _args: Vec<&str>, app: Rc<RefCell<Application>>) -> Result<(), CommandError> {
         let app = app.borrow_mut();
         if app.code_blocks.is_empty() {
             println!("No code blocks to copy.");
@@ -106,7 +116,7 @@ impl Command for CommandCopy {
 
 struct CommandCopyAll;
 impl Command for CommandCopyAll {
-    fn handle_command(&self, _args: Vec<&str>, app: Rc<RefCell<Application>>) -> Result<(), CommandError> {
+    fn handle_command(&self, _registry: &CommandRegistry, _args: Vec<&str>, app: Rc<RefCell<Application>>) -> Result<(), CommandError> {
         let app = app.borrow_mut();
         if app.code_blocks.is_empty() {
             println!("No code blocks to copy.");
@@ -123,7 +133,7 @@ impl Command for CommandCopyAll {
 
 struct CommandClearHistory;
 impl Command for CommandClearHistory {
-    fn handle_command(&self, _args: Vec<&str>, _app: Rc<RefCell<Application>>) -> Result<(), CommandError> {
+    fn handle_command(&self, _registry: &CommandRegistry, _args: Vec<&str>, _app: Rc<RefCell<Application>>) -> Result<(), CommandError> {
         if let Err(e) = remove_file(HISTORY_FILE) {
             eprintln!("Failed to clear history: {}", e);
         } else {
@@ -135,7 +145,7 @@ impl Command for CommandClearHistory {
 
 struct CommandDelete;
 impl Command for CommandDelete {
-    fn handle_command(&self, _args: Vec<&str>, app: Rc<RefCell<Application>>) -> Result<(), CommandError> {
+    fn handle_command(&self, _registry: &CommandRegistry, _args: Vec<&str>, app: Rc<RefCell<Application>>) -> Result<(), CommandError> {
         let app = app.borrow_mut();
         let shared_context = &app.context;
         let messages = app.tokio_rt.block_on(async {
@@ -164,6 +174,17 @@ impl Command for CommandDelete {
             locked.clone()
         });
 
+        Ok(())
+    }
+}
+
+struct CommandHelp;
+impl Command for CommandHelp {
+    fn handle_command(&self, registry: &CommandRegistry, _args: Vec<&str>, _app: Rc<RefCell<Application>>) -> Result<(), CommandError> {
+        println!("Available commands:");
+        for name in registry.get_available_commands() {
+            println!("- {}", name);
+        }
         Ok(())
     }
 }
