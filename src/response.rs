@@ -1,5 +1,5 @@
 use bat::PrettyPrinter;
-use std::io::Error;
+use std::io::{Error, IsTerminal, self};
 use std::pin::Pin;
 use tokio_stream::StreamExt;
 
@@ -18,53 +18,57 @@ pub async fn process_response(
     while let Some(chunk) = stream.next().await {
         match chunk {
             Ok(content) => {
-                for ch in content.chars() {
-                    if ch == '`' {
-                        tickcnt += 1;
-                    }
-                }
-
-                full_response.push_str(&content);
-                if !in_code_block {
-                    if tickcnt == 3 {
-                        tickcnt = 0;
-                        in_code_block = true;
-                        language = String::new();
-                    } else {
-                        print!("{}", content);
-                    }
+                if !io::stdout().is_terminal() {
+                    print!("{}", content);
                 } else {
-                    if tickcnt == 3 {
-                        tickcnt = 0;
-                        in_code_block = false;
-
-                        code_blocks.push(current_code_block_content.clone());
-                        let block = current_code_block_content.clone();
-                        let l = language.clone();
-
-                        let mut pp = PrettyPrinter::new();
-                        pp.input_from_bytes(block.as_bytes()).colored_output(true);
-                        if language != " " {
-                            pp.language(&l);
+                    for ch in content.chars() {
+                        if ch == '`' {
+                            tickcnt += 1;
                         }
+                    }
 
-                        pp.print().unwrap();
-
-                        language = String::new();
-
-                        if content.ends_with('\n') {
-                            println!();
-                        }
-
-                        current_code_block_content = String::new();
-                    } else if language == "" {
-                        if content == "\n" {
-                            language = " ".to_string();
+                    full_response.push_str(&content);
+                    if !in_code_block {
+                        if tickcnt == 3 {
+                            tickcnt = 0;
+                            in_code_block = true;
+                            language = String::new();
                         } else {
-                            language = content.trim().to_string();
+                            print!("{}", content);
                         }
                     } else {
-                        current_code_block_content.push_str(&content);
+                        if tickcnt == 3 {
+                            tickcnt = 0;
+                            in_code_block = false;
+
+                            code_blocks.push(current_code_block_content.clone());
+                            let block = current_code_block_content.clone();
+                            let l = language.clone();
+
+                            let mut pp = PrettyPrinter::new();
+                            pp.input_from_bytes(block.as_bytes()).colored_output(true);
+                            if language != " " {
+                                pp.language(&l);
+                            }
+
+                            pp.print().unwrap();
+
+                            language = String::new();
+
+                            if content.ends_with('\n') {
+                                println!();
+                            }
+
+                            current_code_block_content = String::new();
+                        } else if language == "" {
+                            if content == "\n" {
+                                language = " ".to_string();
+                            } else {
+                                language = content.trim().to_string();
+                            }
+                        } else {
+                            current_code_block_content.push_str(&content);
+                        }
                     }
                 }
             }
