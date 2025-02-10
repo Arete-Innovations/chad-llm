@@ -4,28 +4,25 @@ mod history;
 mod openai;
 mod response;
 mod models;
-
+mod application;
 
 use clipboard::{ClipboardContext, ClipboardProvider};
 use commands::{handle_command, is_command};
 use data::MyCompletion;
-use dialoguer::{theme::ColorfulTheme, BasicHistory, Input};
-use history::History; // Import the History struct
+use dialoguer::{theme::ColorfulTheme, Input};
 use openai::send_request;
 use std::io::Write;
 use std::sync::Arc;
-use tokio::runtime::Runtime;
-use tokio::sync::Mutex;
+use std::rc::Rc;
+use std::cell::RefCell;
 
-fn main() {
-    let context = Arc::new(Mutex::new(Vec::new()));
-    let mut history = BasicHistory::new().max_entries(99).no_duplicates(false);
-    let rt = Runtime::new().unwrap();
-    let completion = MyCompletion::default();
-    let session_history = History::new("session_history.txt"); // Initialize history
+fn main() -> ! {
+    let gapp = Rc::new(RefCell::new(application::Application::new()));
+    let mut command_registry = commands::CommandRegistry::new();
+    command_registry.register_default_commands();
 
     // Load previous history entries
-    match session_history.load_history() {
+    match gapp.borrow_mut().session_history.load_history() {
         Ok(entries) => {
             for entry in entries {
                 println!(" {}", entry);
@@ -35,24 +32,49 @@ fn main() {
     }
 
     loop {
-        let mut code_blocks: Vec<String> = Vec::new(); // Reset code_blocks for each interaction
-
-        let mut input = Input::<String>::with_theme(&ColorfulTheme::default())
-            .with_prompt(whoami::realname()) // Add newline before prompt
-            .completion_with(&completion)
-            .history_with(&mut history)
-            .interact_text()
-            .unwrap();
-
-        // Save the input to history
-        if let Err(e) = session_history.save_entry(&input) {
-            eprintln!("Failed to save entry: {}", e);
+        let mut input;
+        {
+            let mut app = gapp.borrow_mut();
+            input = Input::<String>::with_theme(&ColorfulTheme::default())
+                .with_prompt(whoami::realname()) // Add newline before prompt
+                .completion_with(&mut app.cli_completion.clone())
+                .history_with(&mut app.cli_history)
+                .interact_text()
+                .unwrap()
+                .trim()
+                .to_owned();
         }
 
-        // Check if the input is a command
-        if is_command(&input) {
-            if input.trim() == "/paste" {
-                // If the command was /paste, append the clipboard content to the input
+        // Save the input to history
+        {
+            let mut app = gapp.borrow_mut();
+            if let Err(e) = app.session_history.save_entry(&input) {
+                eprintln!("Failed to save entry: {}", e);
+            }
+        }
+
+        // Check if a command, and if so, then parse it.
+        if input.starts_with('/') && input.len() > 1 {
+            let mut args = Vec::<&str>::new();
+            let mut name: &str = "<unknown command>";
+            let mut first = true;
+
+            input = input.strip_prefix('/').unwrap().to_owned();
+            let input_cmd = input.clone();
+            for arg in input_cmd.split(' ') {
+                if arg == "" {
+                    continue
+                }
+                if first {
+                    name = arg
+                } else {
+                    args.push(arg)
+                }
+                first = false;
+            }
+
+            if name == "paste" {
+                // FIXME: Register this as a command.
                 let mut clipboard: ClipboardContext = ClipboardProvider::new().unwrap();
                 match clipboard.get_contents() {
                     Ok(paste_content) => {
@@ -72,24 +94,34 @@ fn main() {
                     Err(err) => eprintln!("Failed to read clipboard: {}", err),
                 }
             } else {
-                handle_command(&input, &code_blocks, "session_history.txt"); // Pass the history file path
-                continue; // Skip to the next loop iteration
+                let res = command_registry.execute_command(name, args, gapp.clone());
+                match res {
+                    Ok(()) => println!("Command executed successfuly!"),
+                    Err(e) => println!("Failed to execute command. Reason: {:?}", e),
+                }
+
+                continue;
             }
         }
 
+        let mut app = gapp.borrow_mut();
         // Now input contains the aggregated content
-        let response_stream = rt.block_on(send_request(&input, Arc::clone(&context)));
+        let response_stream = app.tokio_rt.block_on(send_request(&input, Arc::clone(&app.context)));
         match response_stream {
             Ok(stream) => {
-                let response = rt.block_on(response::process_response(
+                let mut code_blocks = std::mem::take(&mut app.code_blocks);
+
+                let response = app.tokio_rt.block_on(response::process_response(
                     Box::pin(stream),
                     &mut code_blocks,
                 ));
 
+                app.code_blocks = code_blocks;
+
                 match response {
                     Ok(resp) => {
                         // Save the GPT response to history
-                        if let Err(e) = session_history.save_response(&resp) {
+                        if let Err(e) = app.session_history.save_response(&resp) {
                             eprintln!("Failed to save response: {}", e);
                         }
                     }
@@ -99,12 +131,12 @@ fn main() {
             Err(err) => eprintln!("Request failed: {}", err),
         }
 
-        if !code_blocks.is_empty() {
+        if !app.code_blocks.is_empty() {
             if let Ok(command_input) = Input::<String>::with_theme(&ColorfulTheme::default())
                 .with_prompt("Enter command")
                 .interact_text()
             {
-                handle_command(&command_input, &code_blocks, "session_history.txt");
+                handle_command(&command_input, &app.code_blocks, "session_history.txt");
             }
         }
         println!(); // Ensure new line after each interaction

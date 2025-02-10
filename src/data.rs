@@ -1,4 +1,6 @@
 use dialoguer::Completion;
+
+#[derive(Clone)]
 pub struct MyCompletion {
     options: Vec<String>,
 }

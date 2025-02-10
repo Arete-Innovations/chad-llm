@@ -9,6 +9,7 @@ pkgs.mkShell {
 	buildInputs = with pkgs; [
 		cargo
 		rustc
+		rust-analyzer
 		openssl
 		pkg-config
 		xorg.libxcb

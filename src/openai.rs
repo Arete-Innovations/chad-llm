@@ -12,7 +12,7 @@ use tokio_stream::wrappers::ReceiverStream;
 // Import the Message struct
 use crate::models::Message;
 
-type SharedContext = Arc<Mutex<Vec<Message>>>;
+pub type SharedContext = Arc<Mutex<Vec<Message>>>;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ChatRequest {
