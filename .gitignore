@@ -7,3 +7,4 @@ target/
 **/Cargo.toml.orig
 
 session_history.txt
+.DS_Store
