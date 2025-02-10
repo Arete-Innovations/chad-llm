@@ -38,9 +38,12 @@ struct Delta {
     content: Option<String>,
 }
 
+pub static AVAILABLE_MODELS: &'static [&'static str] = &["chatgpt-4o-latest", "gpt-4o", "gpt-4o-mini", "o1", "o1-mini", "o3-mini", "o1-preview"];
+
 pub async fn send_request(
     input: &str,
     context: SharedContext,
+    model: &str,
 ) -> Result<impl Stream<Item = Result<String, std::io::Error>>, std::io::Error> {
     let client = Client::new();
     let api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
@@ -57,7 +60,7 @@ pub async fn send_request(
     };
 
     let request_body = ChatRequest {
-        model: "gpt-3.5-turbo".to_string(),
+        model: model.to_owned(),
         messages: messages.clone(),
         max_tokens: 2048,
         temperature: 0.5,

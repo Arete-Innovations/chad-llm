@@ -104,8 +104,7 @@ fn main() -> ! {
         }
 
         let mut app = gapp.borrow_mut();
-        // Now input contains the aggregated content
-        let response_stream = app.tokio_rt.block_on(send_request(&input, Arc::clone(&app.context)));
+        let response_stream = app.tokio_rt.block_on(send_request(&input, Arc::clone(&app.context), &app.model));
         match response_stream {
             Ok(stream) => {
                 let mut code_blocks = std::mem::take(&mut app.code_blocks);

@@ -1,4 +1,5 @@
 use crate::application::{Application, HISTORY_FILE};
+use crate::openai;
 
 use clipboard::{ClipboardContext, ClipboardProvider};
 use dialoguer::{theme::ColorfulTheme, Select, MultiSelect};
@@ -11,6 +12,7 @@ use std::cell::RefCell;
 #[derive(Debug)]
 pub enum CommandError {
     CommandNotFound,
+    InvalidModel,
 }
 
 pub trait Command {
@@ -61,6 +63,10 @@ impl CommandRegistry {
         self.register_command("del", CommandDelete);
 
         self.register_command("help", CommandHelp);
+
+        self.register_command("set_model", CommandSetModel);
+        self.register_command("setmodel", CommandSetModel);
+        self.register_command("model", CommandSetModel);
     }
 
     pub fn execute_command(&self, name: &str, args: Vec<&str>, app: Rc<RefCell<Application>>) -> Result<(), CommandError> {
@@ -185,6 +191,37 @@ impl Command for CommandHelp {
         for name in registry.get_available_commands() {
             println!("- {}", name);
         }
+        Ok(())
+    }
+}
+
+struct CommandSetModel;
+impl Command for CommandSetModel {
+    fn handle_command(&self, _registry: &CommandRegistry, args: Vec<&str>, app: Rc<RefCell<Application>>) -> Result<(), CommandError> {
+        let mut app = app.borrow_mut();
+
+        let model_idx;
+        if args.len() != 0 {
+            match openai::AVAILABLE_MODELS.iter().position(|&r| r == args[0])  {
+                Some(x) => {
+                    model_idx = x
+                },
+                None => {
+                    return Err(CommandError::InvalidModel);
+                }
+            };
+        } else {
+            let initial = openai::AVAILABLE_MODELS.iter().position(|&r| r == app.model).unwrap();
+            model_idx = Select::with_theme(&ColorfulTheme::default())
+                .with_prompt(format!("Select a model to use. You are using {}.", app.model))
+                .items(&openai::AVAILABLE_MODELS)
+                .default(initial)
+                .interact()
+                .unwrap();
+        }
+
+        app.model = openai::AVAILABLE_MODELS[model_idx];
+        println!("Model changed to {}!", app.model);
         Ok(())
     }
 }
