@@ -1,7 +1,7 @@
 use crate::application::{Application, HISTORY_FILE};
 
 use clipboard::{ClipboardContext, ClipboardProvider};
-use dialoguer::{theme::ColorfulTheme, Select};
+use dialoguer::{theme::ColorfulTheme, Select, MultiSelect};
 use std::fs::remove_file;
 use std::process;
 use std::collections::HashMap;
@@ -48,6 +48,9 @@ impl CommandRegistry {
         self.register_command("clearhistory", CommandClearHistory);
         self.register_command("clear_h", CommandClearHistory);
         self.register_command("clearh", CommandClearHistory);
+
+        self.register_command("delete", CommandDelete);
+        self.register_command("del", CommandDelete);
     }
 
     pub fn execute_command(&self, name: &str, args: Vec<&str>, app: Rc<RefCell<Application>>) -> Result<(), CommandError> {
@@ -126,6 +129,41 @@ impl Command for CommandClearHistory {
         } else {
             println!("History cleared.");
         }
+        Ok(())
+    }
+}
+
+struct CommandDelete;
+impl Command for CommandDelete {
+    fn handle_command(&self, _args: Vec<&str>, app: Rc<RefCell<Application>>) -> Result<(), CommandError> {
+        let app = app.borrow_mut();
+        let shared_context = &app.context;
+        let messages = app.tokio_rt.block_on(async {
+            let locked = shared_context.lock().await;
+            locked.clone()
+        });
+
+        let mut messages_choice = Vec::<String>::new();
+        for msg in messages {
+            let msg = format!("{}: {}", msg.role, msg.content);
+            messages_choice.push(msg);
+        }
+
+        let mut selections = MultiSelect::with_theme(&ColorfulTheme::default())
+            .with_prompt("Select messages to delete")
+            .items(&messages_choice)
+            .interact()
+            .unwrap();
+        selections.sort_by(|a, b| b.cmp(a));
+
+        app.tokio_rt.block_on(async {
+            let mut locked = shared_context.lock().await;
+            for i in selections {
+                locked.remove(i);
+            }
+            locked.clone()
+        });
+
         Ok(())
     }
 }
