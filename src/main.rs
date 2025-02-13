@@ -6,7 +6,7 @@ mod openai;
 mod response;
 
 use clipboard::{ClipboardContext, ClipboardProvider};
-use dialoguer::{theme::ColorfulTheme, Input};
+use dialoguer::{theme::ColorfulTheme, Input, Editor};
 use openai::send_request;
 use std::cell::RefCell;
 use std::io::{self, IsTerminal, BufRead, Write};
@@ -96,6 +96,13 @@ fn main() -> ! {
                             input.push_str(&additional_input);
                         }
                         Err(err) => eprintln!("Failed to read clipboard: {}", err),
+                    }
+                } else if name == "editor" {
+                    if let Some(inp) = Editor::new().edit("").unwrap() {
+                        input = inp
+                    } else {
+                        println!("Aborted!");
+                        continue;
                     }
                 } else {
                     let res = command_registry.execute_command(name, args, gapp.clone());
