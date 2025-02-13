@@ -200,9 +200,21 @@ impl Command for CommandSetModel {
     fn handle_command(&self, _registry: &CommandRegistry, args: Vec<&str>, app: Rc<RefCell<Application>>) -> Result<(), CommandError> {
         let mut app = app.borrow_mut();
 
+        let mut available_models: Vec<String> = vec![];
+
+        app.tokio_rt.block_on(async {
+            available_models = match openai::get_models().await {
+                Some(x) => x,
+                None => {
+                    println!("Failed to fetch available models from OpenAI.");
+                    openai::AVAILABLE_MODELS.iter().map(|m| m.to_string()).collect()
+                },
+            }
+        });
+
         let model_idx;
         if args.len() != 0 {
-            match openai::AVAILABLE_MODELS.iter().position(|&r| r == args[0])  {
+            match available_models.iter().position(|r| r == args[0])  {
                 Some(x) => {
                     model_idx = x
                 },
@@ -211,16 +223,16 @@ impl Command for CommandSetModel {
                 }
             };
         } else {
-            let initial = openai::AVAILABLE_MODELS.iter().position(|&r| r == app.model).unwrap();
+            let initial = available_models.iter().position(|r| *r == app.model).unwrap();
             model_idx = Select::with_theme(&ColorfulTheme::default())
                 .with_prompt(format!("Select a model to use. You are using {}.", app.model))
-                .items(&openai::AVAILABLE_MODELS)
+                .items(&available_models)
                 .default(initial)
                 .interact()
                 .unwrap();
         }
 
-        app.model = openai::AVAILABLE_MODELS[model_idx];
+        app.model = available_models[model_idx].clone();
         println!("Model changed to {}!", app.model);
         Ok(())
     }

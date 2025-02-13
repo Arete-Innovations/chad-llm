@@ -40,6 +40,32 @@ struct Delta {
 
 pub static AVAILABLE_MODELS: &'static [&'static str] = &["chatgpt-4o-latest", "gpt-4o", "gpt-4o-mini", "o1", "o1-mini", "o3-mini", "o1-preview"];
 
+pub async fn get_models() -> Option<Vec<String>> {
+    #[derive(Deserialize)]
+    struct Model {
+        id: String,
+    }
+
+    #[derive(Deserialize)]
+    struct Response {
+        data: Vec<Model>,
+    }
+
+    let client = Client::new();
+    let api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
+    let url = "https://api.openai.com/v1/models";
+
+    let response = client
+        .get(url)
+        .header("Authorization", format!("Bearer {}", api_key))
+        .send()
+        .await
+        .ok()?;
+
+    let body: Response = response.json().await.ok()?;
+    Some(body.data.into_iter().map(|model| model.id).collect())
+}
+
 pub async fn send_request(
     input: &str,
     context: SharedContext,

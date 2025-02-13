@@ -17,7 +17,7 @@ pub struct Application {
     pub cli_completion: MyCompletion,
     pub session_history: History, // FIXME: Remove, we have SharedContext.
     pub code_blocks: Vec<String>,
-    pub model: &'static str,
+    pub model: String,
 }
 
 pub const HISTORY_FILE: &str = "session_history.txt";
@@ -31,7 +31,7 @@ impl Application {
             cli_completion: MyCompletion::default(),
             session_history: History::new(HISTORY_FILE),
             code_blocks: Vec::new(),
-            model: AVAILABLE_MODELS[0]
+            model: AVAILABLE_MODELS[0].to_owned()
         }
     }
 }
