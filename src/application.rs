@@ -1,6 +1,5 @@
 use crate::openai;
 use crate::history;
-use crate::MyCompletion;
 use crate::openai::AVAILABLE_MODELS;
 
 use tokio::runtime::Runtime;
@@ -14,7 +13,6 @@ pub struct Application {
     pub tokio_rt: Runtime,
     pub context: openai::SharedContext,
     pub cli_history: BasicHistory,
-    pub cli_completion: MyCompletion,
     pub session_history: History, // FIXME: Remove, we have SharedContext.
     pub code_blocks: Vec<String>,
     pub model: String,
@@ -28,7 +26,6 @@ impl Application {
             tokio_rt: Runtime::new().unwrap(),
             context: Arc::new(Mutex::new(Vec::new())),
             cli_history: BasicHistory::new().max_entries(99).no_duplicates(false),
-            cli_completion: MyCompletion::default(),
             session_history: History::new(HISTORY_FILE),
             code_blocks: Vec::new(),
             model: AVAILABLE_MODELS[0].to_owned()

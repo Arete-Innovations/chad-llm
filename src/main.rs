@@ -1,13 +1,11 @@
 mod application;
 mod commands;
-mod data;
 mod history;
 mod models;
 mod openai;
 mod response;
 
 use clipboard::{ClipboardContext, ClipboardProvider};
-use data::MyCompletion;
 use dialoguer::{theme::ColorfulTheme, Input};
 use openai::send_request;
 use std::cell::RefCell;
@@ -43,7 +41,7 @@ fn main() -> ! {
                 let mut app = gapp.borrow_mut();
                 input = Input::<String>::with_theme(&ColorfulTheme::default())
                     .with_prompt(whoami::realname()) // Add newline before prompt
-                    .completion_with(&mut app.cli_completion.clone())
+                    .completion_with(&mut command_registry)
                     .history_with(&mut app.cli_history)
                     .interact_text()
                     .unwrap()

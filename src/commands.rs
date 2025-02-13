@@ -2,12 +2,30 @@ use crate::application::{Application, HISTORY_FILE};
 use crate::openai;
 
 use clipboard::{ClipboardContext, ClipboardProvider};
-use dialoguer::{theme::ColorfulTheme, Select, MultiSelect};
+use dialoguer::{theme::ColorfulTheme, Select, MultiSelect, Completion};
+use fuzzy_matcher::clangd::fuzzy_match;
+
 use std::fs::remove_file;
 use std::process;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::cell::RefCell;
+
+impl Completion for CommandRegistry {
+    fn get(&self, input: &str) -> Option<String> {
+        let inp = input.to_string();
+        let inp = inp.strip_prefix("/")?;
+        let mut cmds: Vec<(&str, i64)> = self
+            .get_available_commands()
+            .into_iter()
+            .map(|cmd| (cmd, fuzzy_match(&cmd, &inp)))
+            .filter(|(_, score)| score.is_some())
+            .map(|(cmd, score)| (cmd, score.unwrap()))
+            .collect();
+        cmds.sort_by(|(_, a), (_, b)| a.cmp(b));
+        return Some(format!("/{}", cmds[0].0.to_string()));
+    }
+}
 
 #[derive(Debug)]
 pub enum CommandError {
