@@ -23,7 +23,11 @@ impl Completion for CommandRegistry {
             .map(|(cmd, score)| (cmd, score.unwrap()))
             .collect();
         cmds.sort_by(|(_, a), (_, b)| a.cmp(b));
-        return Some(format!("/{}", cmds[0].0.to_string()));
+        if cmds.is_empty() {
+            None
+        } else {
+            Some(format!("/{}", cmds[0].0.to_string()))
+        }
     }
 }
 
