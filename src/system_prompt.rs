@@ -2,9 +2,9 @@ use dirs::data_dir;
 use serde::{Serialize, Deserialize};
 
 use std::collections::HashMap;
-use std::path::Path;
+use std::error::Error;
 
-const FILE_NAME: &'static str = "system_prompts.json";
+const FILE_NAME: &'static str = "chad-llm/system_prompts.json";
 
 #[derive(Serialize, Deserialize)]
 pub struct SystemPrompts {
@@ -22,12 +22,12 @@ impl std::fmt::Display for SystemPromptsError {
     }
 }
 
-impl std::error::Error for SystemPromptsError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+impl Error for SystemPromptsError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         None
     }
 
-    fn cause(&self) -> Option<&dyn std::error::Error> {
+    fn cause(&self) -> Option<&dyn Error> {
         self.source()
     }
 }
@@ -39,6 +39,9 @@ impl SystemPrompts {
         };
         if let Err(err) = this.import() {
             println!("Failed to import system prompts. Reason: {}", err);
+        }
+        if this.prompts.is_empty() {
+            this.update_or_create("default", "You are a helpful assistant.").unwrap();
         }
         this
     }
@@ -55,7 +58,7 @@ impl SystemPrompts {
         return self.prompts.get(name);
     }
 
-    pub fn update(&mut self, name: &str, contents: &str) -> Result<(), Box<dyn std::error::Error>>  {
+    pub fn update(&mut self, name: &str, contents: &str) -> Result<(), Box<dyn Error>>  {
         match self.prompts.get_mut(name) {
             None => {
                 return Err(Box::new(SystemPromptsError::FailedToFindPrompt))
@@ -67,8 +70,30 @@ impl SystemPrompts {
         }
     }
 
-    fn import(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let path = Path::new(FILE_NAME);
+    pub fn update_or_create(&mut self, name: &str, contents: &str) -> Result<(), Box<dyn Error>> {
+        match self.update(name, contents) {
+            Ok(()) => Ok(()),
+            Err(_) => {
+                self.prompts.insert(name.to_owned(), contents.to_owned());
+                Ok(())
+            }
+        }
+    }
+
+    pub fn remove(&mut self, name: &str) {
+        self.prompts.remove(name);
+    }
+
+    fn get_file_path() -> std::path::PathBuf {
+        let mut path = data_dir().unwrap();
+        path.push("chad-llm/");
+        path.push(FILE_NAME);
+        path
+    }
+
+    fn import(&mut self) -> Result<(), Box<dyn Error>> {
+        let path = Self::get_file_path();
+        let path = path.as_path();
         let file_contents = std::fs::read_to_string(path)?;
         let read: Self = serde_json::from_str(&file_contents)?;
 
@@ -77,8 +102,10 @@ impl SystemPrompts {
         Ok(())
     }
 
-    fn export(&self) -> Result<(), Box<dyn std::error::Error>> {
-        let path = Path::new(FILE_NAME);
+    fn export(&self) -> Result<(), Box<dyn Error>> {
+        let path = Self::get_file_path();
+        let path = path.as_path();
+
         let j = serde_json::to_string(&self)?;
         std::fs::write(path, j)?;
         Ok(())

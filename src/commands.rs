@@ -2,7 +2,7 @@ use crate::application::{Application, HISTORY_FILE};
 use crate::openai;
 
 use clipboard::{ClipboardContext, ClipboardProvider};
-use dialoguer::{theme::ColorfulTheme, Select, MultiSelect, Completion};
+use dialoguer::{theme::ColorfulTheme, Select, MultiSelect, Completion, Editor};
 use fuzzy_matcher::clangd::fuzzy_match;
 
 use std::fs::remove_file;
@@ -31,6 +31,9 @@ impl Completion for CommandRegistry {
 pub enum CommandError {
     CommandNotFound,
     InvalidModel,
+    UpdateFailed,
+    InvalidSystemPrompt,
+    Aborted,
 }
 
 pub trait Command {
@@ -63,28 +66,17 @@ impl CommandRegistry {
     pub fn register_default_commands(&mut self) {
         self.register_command("exit", CommandExit);
         self.register_command("quit", CommandExit);
-
         self.register_command("clear", CommandClear);
         self.register_command("cls", CommandClear);
-
         self.register_command("copy", CommandCopy);
-
         self.register_command("copy_all", CommandCopyAll);
-        self.register_command("copyall", CommandCopyAll);
-
         self.register_command("clear_history", CommandClearHistory);
-        self.register_command("clearhistory", CommandClearHistory);
-        self.register_command("clear_h", CommandClearHistory);
-        self.register_command("clearh", CommandClearHistory);
-
         self.register_command("delete", CommandDelete);
-        self.register_command("del", CommandDelete);
-
         self.register_command("help", CommandHelp);
-
         self.register_command("set_model", CommandSetModel);
-        self.register_command("setmodel", CommandSetModel);
-        self.register_command("model", CommandSetModel);
+        self.register_command("system_edit", CommandSystemEdit);
+        self.register_command("system_remove", CommandSystemRemove);
+        self.register_command("system_use", CommandSystemUse);
     }
 
     pub fn execute_command(&self, name: &str, args: Vec<&str>, app: Rc<RefCell<Application>>) -> Result<(), CommandError> {
@@ -252,6 +244,119 @@ impl Command for CommandSetModel {
 
         app.model = available_models[model_idx].clone();
         println!("Model changed to {}!", app.model);
+        Ok(())
+    }
+}
+
+struct CommandSystemEdit;
+impl Command for CommandSystemEdit {
+    fn handle_command(&self, _registry: &CommandRegistry, args: Vec<&str>, app: Rc<RefCell<Application>>) -> Result<(), CommandError> {
+        let mut app = app.borrow_mut();
+        let available = app.system_prompts.get_available();
+
+        let name: String;
+        if args.len() == 0 {
+            let active = app.active_system_prompt.clone();
+            let initial = available.iter().position(|r| *r == *active).unwrap_or(0);
+            let model_idx = Select::with_theme(&ColorfulTheme::default())
+                .with_prompt(format!("Select a system prompt to edit. You are using {:?}.", app.active_system_prompt))
+                .items(&available)
+                .default(initial)
+                .interact()
+                .unwrap();
+            name = available.get(model_idx).unwrap().clone();
+        } else {
+            name = args.get(0).unwrap().to_string();
+        }
+
+        let existing_data = match app.system_prompts.get(&name) {
+            Some(x) => x.clone(),
+            _ => "You are a helpful virtual assistant.".to_string(),
+        };
+
+        if let Some(inp) = Editor::new().edit(&existing_data).unwrap() {
+            match app.system_prompts.update_or_create(&name, &inp) {
+                Ok(_) => {println!("Prompt updated."); Ok(())}
+                Err(e) => {
+                    println!("Failed to update. Reason: {}", e);
+                    Err(CommandError::UpdateFailed)
+                }
+            }
+        } else {
+            Err(CommandError::Aborted)
+        }
+    }
+}
+
+struct CommandSystemRemove;
+impl Command for CommandSystemRemove {
+    fn handle_command(&self, _registry: &CommandRegistry, args: Vec<&str>, app: Rc<RefCell<Application>>) -> Result<(), CommandError> {
+        let mut app = app.borrow_mut();
+        let available = app.system_prompts.get_available();
+
+        let name;
+        if args.len() == 0 {
+            let active = app.active_system_prompt.clone();
+            let initial = available.iter().position(|r| *r == *active).unwrap_or(0);
+            let model_idx = Select::with_theme(&ColorfulTheme::default())
+                .with_prompt(format!("Select a system prompt to remove. You are using {:?}.", app.active_system_prompt))
+                .items(&available)
+                .default(initial)
+                .interact()
+                .unwrap();
+            name = (*available.get(model_idx).unwrap()).clone();
+        } else {
+            name = args.get(0).unwrap().to_string();
+        }
+
+        app.system_prompts.remove(&name);
+
+        Ok(())
+    }
+}
+
+struct CommandSystemUse;
+impl Command for CommandSystemUse {
+    fn handle_command(&self, _registry: &CommandRegistry, args: Vec<&str>, app: Rc<RefCell<Application>>) -> Result<(), CommandError> {
+        let mut app = app.borrow_mut();
+        let available = app.system_prompts.get_available();
+
+        let name;
+        if args.len() == 0 {
+            let active = app.active_system_prompt.clone();
+            let initial = available.iter().position(|r| *r == *active).unwrap_or(0);
+            let model_idx = Select::with_theme(&ColorfulTheme::default())
+                .with_prompt(format!("Select a system prompt to remove. You are using {:?}.", app.active_system_prompt))
+                .items(&available)
+                .default(initial)
+                .interact()
+                .unwrap();
+            name = (*available.get(model_idx).unwrap()).clone();
+        } else {
+            name = args.get(0).unwrap().to_string();
+        }
+
+        let contents = match app.system_prompts.get(&name) {
+            Some(x) => Some(x.clone()),
+            None => None,
+        };
+        let contents = match contents {
+            Some(x) => {
+                app.active_system_prompt = name;
+                x
+            },
+            None => {
+                return Err(CommandError::InvalidSystemPrompt)
+            }
+        };
+
+        let shared_context = &app.context;
+        let _ = app.tokio_rt.block_on(async {
+            let mut locked = shared_context.lock().await;
+            openai::set_system_prompt(&mut locked, &contents);
+            locked.clone()
+        });
+
         Ok(())
     }
 }

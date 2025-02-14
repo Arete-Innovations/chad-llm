@@ -6,6 +6,7 @@ use crate::system_prompt::SystemPrompts;
 use tokio::runtime::Runtime;
 use history::History;
 use dialoguer::BasicHistory;
+use dirs::data_dir;
 
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -18,14 +19,14 @@ pub struct Application {
     pub code_blocks: Vec<String>,
     pub model: String,
     pub system_prompts: SystemPrompts,
-    pub active_system_prompt: Option<String>,
+    pub active_system_prompt: String,
 }
 
 pub const HISTORY_FILE: &str = "session_history.txt";
 
 impl Application {
     pub fn new() -> Self {
-        Application {
+        let mut app = Application {
             tokio_rt: Runtime::new().unwrap(),
             context: Arc::new(Mutex::new(Vec::new())),
             cli_history: BasicHistory::new().max_entries(99).no_duplicates(false),
@@ -33,8 +34,18 @@ impl Application {
             code_blocks: Vec::new(),
             model: AVAILABLE_MODELS[0].to_owned(),
             system_prompts: SystemPrompts::new(),
-            active_system_prompt: None,
-        }
+            active_system_prompt: "".to_owned(),
+        };
+        app.active_system_prompt = match app.system_prompts.get_available().iter().position(|r| r == "default") {
+            None => app.system_prompts.get_available().get(0).unwrap().to_owned(),
+            Some(_) => "default".to_owned(),
+        };
+        let mut path = data_dir().unwrap();
+        path.push("chad-llm/");
+        std::fs::create_dir(path.as_path()).unwrap();
+        app
     }
+
+
 }
 

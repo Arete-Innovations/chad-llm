@@ -1,18 +1,29 @@
-// src/openai.rs
+use crate::models::Message;
+
 use futures_util::Stream;
 use futures_util::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use std::env;
-use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio::sync::Mutex;
 use tokio_stream::wrappers::ReceiverStream;
 
-// Import the Message struct
-use crate::models::Message;
+use std::env;
+use std::sync::Arc;
 
 pub type SharedContext = Arc<Mutex<Vec<Message>>>;
+
+pub fn set_system_prompt(context: &mut Vec<Message>, content: &str) {
+    if context.first().map_or(false, |m| m.role == "system") {
+        context.remove(0);
+    }
+    if !content.is_empty() {
+        context.insert(0, Message {
+            role: "system".to_owned(),
+            content: content.to_owned()
+        });
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ChatRequest {
