@@ -1,15 +1,15 @@
 use crate::application::{Application, HISTORY_FILE};
+use crate::cli::CLI;
 use crate::openai;
 
 use clipboard::{ClipboardContext, ClipboardProvider};
-use dialoguer::{theme::ColorfulTheme, Select, MultiSelect, Completion, Editor};
 use fuzzy_matcher::clangd::fuzzy_match;
 
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::fs::remove_file;
 use std::process;
-use std::collections::HashMap;
 use std::rc::Rc;
-use std::cell::RefCell;
 
 fn get_input_or_select<'a>(
     args: &[&str],
@@ -25,34 +25,32 @@ fn get_input_or_select<'a>(
         .and_then(|d| available.iter().position(|&r| r == d))
         .unwrap_or(0);
 
-    Select::with_theme(&ColorfulTheme::default())
-        .with_prompt(prompt)
-        .items(available)
-        .default(initial)
-        .interact()
-        .ok()
-        .map(|idx| available[idx].to_string())
+    let v = CLI::select(prompt, available, true, &[initial]);
+    if v.is_empty() {
+        return None;
+    }
+    Some(available[v[0]].to_string())
 }
 
-impl Completion for CommandRegistry {
-    fn get(&self, input: &str) -> Option<String> {
-        let inp = input.to_string();
-        let inp = inp.strip_prefix("/")?;
-        let mut cmds: Vec<(&str, i64)> = self
-            .get_available_commands()
-            .into_iter()
-            .map(|cmd| (cmd, fuzzy_match(&cmd, &inp)))
-            .filter(|(_, score)| score.is_some())
-            .map(|(cmd, score)| (cmd, score.unwrap()))
-            .collect();
-        cmds.sort_by(|(_, a), (_, b)| a.cmp(b));
-        if cmds.is_empty() {
-            None
-        } else {
-            Some(format!("/{}", cmds[0].0.to_string()))
-        }
-    }
-}
+//impl Completion for CommandRegistry {
+//    fn get(&self, input: &str) -> Option<String> {
+//        let inp = input.to_string();
+//        let inp = inp.strip_prefix("/")?;
+//        let mut cmds: Vec<(&str, i64)> = self
+//            .get_available_commands()
+//            .into_iter()
+//            .map(|cmd| (cmd, fuzzy_match(&cmd, &inp)))
+//            .filter(|(_, score)| score.is_some())
+//            .map(|(cmd, score)| (cmd, score.unwrap()))
+//            .collect();
+//        cmds.sort_by(|(_, a), (_, b)| a.cmp(b));
+//        if cmds.is_empty() {
+//            None
+//        } else {
+//            Some(format!("/{}", cmds[0].0.to_string()))
+//        }
+//    }
+//}
 
 #[derive(Debug)]
 pub enum CommandError {
@@ -64,7 +62,12 @@ pub enum CommandError {
 }
 
 pub trait Command {
-    fn handle_command(&self, registry: &CommandRegistry, args: Vec<&str>, app: Rc<RefCell<Application>>) -> Result<(), CommandError>;
+    fn handle_command(
+        &self,
+        registry: &CommandRegistry,
+        args: Vec<&str>,
+        app: Rc<RefCell<Application>>,
+    ) -> Result<(), CommandError>;
 }
 
 pub struct CommandRegistry {
@@ -106,11 +109,14 @@ impl CommandRegistry {
         self.register_command("system_use", CommandSystemUse);
     }
 
-    pub fn execute_command(&self, name: &str, args: Vec<&str>, app: Rc<RefCell<Application>>) -> Result<(), CommandError> {
+    pub fn execute_command(
+        &self,
+        name: &str,
+        args: Vec<&str>,
+        app: Rc<RefCell<Application>>,
+    ) -> Result<(), CommandError> {
         match self.commands.get(&name) {
-            Some(x) => {
-                x.handle_command(self, args, app)
-            },
+            Some(x) => x.handle_command(self, args, app),
             None => Err(CommandError::CommandNotFound),
         }
     }
@@ -118,69 +124,97 @@ impl CommandRegistry {
 
 struct CommandExit;
 impl Command for CommandExit {
-    fn handle_command(&self, _registry: &CommandRegistry, _args: Vec<&str>, _app: Rc<RefCell<Application>>) -> Result<(), CommandError> {
+    fn handle_command(
+        &self,
+        _registry: &CommandRegistry,
+        _args: Vec<&str>,
+        _app: Rc<RefCell<Application>>,
+    ) -> Result<(), CommandError> {
         process::exit(0);
     }
 }
 
 struct CommandClear;
 impl Command for CommandClear {
-    fn handle_command(&self, _registry: &CommandRegistry, _args: Vec<&str>, _app: Rc<RefCell<Application>>) -> Result<(), CommandError> {
-        println!("\x1B[2J\x1B[1;1H");
+    fn handle_command(
+        &self,
+        _registry: &CommandRegistry,
+        _args: Vec<&str>,
+        _app: Rc<RefCell<Application>>,
+    ) -> Result<(), CommandError> {
+        print!("\x1B[2J\x1B[1;1H\r\n");
         Ok(())
     }
 }
 
 struct CommandCopy;
 impl Command for CommandCopy {
-    fn handle_command(&self, _registry: &CommandRegistry, _args: Vec<&str>, app: Rc<RefCell<Application>>) -> Result<(), CommandError> {
+    fn handle_command(
+        &self,
+        _registry: &CommandRegistry,
+        _args: Vec<&str>,
+        app: Rc<RefCell<Application>>,
+    ) -> Result<(), CommandError> {
         let app = app.borrow_mut();
         if app.code_blocks.is_empty() {
-            println!("No code blocks to copy.");
-            return Ok(())
+            print!("No code blocks to copy.\r\n");
+            return Ok(());
         }
 
         let selections: Vec<&str> = app.code_blocks.iter().map(|s| s.as_str()).collect();
-        let selection = Select::with_theme(&ColorfulTheme::default())
-            .with_prompt("Select code block to copy")
-            .items(&selections)
-            .default(0)
-            .interact()
-            .unwrap();
+        let selection = *CLI::select("Select code block to copy", &selections, true, &[0])
+            .get(0)
+            .unwrap_or(&0);
+        //let selection = Select::with_theme(&ColorfulTheme::default())
+        //    .with_prompt("Select code block to copy")
+        //    .items(&selections)
+        //    .default(0)
+        //    .interact()
+        //    .unwrap();
 
         let mut clipboard: ClipboardContext = ClipboardProvider::new().unwrap();
         clipboard
             .set_contents(app.code_blocks[selection].clone())
             .unwrap();
-        println!("Code block copied to clipboard");
+        print!("Code block copied to clipboard\r\n");
         Ok(())
     }
 }
 
 struct CommandCopyAll;
 impl Command for CommandCopyAll {
-    fn handle_command(&self, _registry: &CommandRegistry, _args: Vec<&str>, app: Rc<RefCell<Application>>) -> Result<(), CommandError> {
+    fn handle_command(
+        &self,
+        _registry: &CommandRegistry,
+        _args: Vec<&str>,
+        app: Rc<RefCell<Application>>,
+    ) -> Result<(), CommandError> {
         let app = app.borrow_mut();
         if app.code_blocks.is_empty() {
-            println!("No code blocks to copy.");
-            return Ok(())
+            print!("No code blocks to copy.\r\n");
+            return Ok(());
         }
 
         let mut clipboard: ClipboardContext = ClipboardProvider::new().unwrap();
         let all_code = app.code_blocks.join("\n\n");
         clipboard.set_contents(all_code.clone()).unwrap();
-        println!("All code blocks copied to clipboard");
+        print!("All code blocks copied to clipboard\r\n");
         Ok(())
     }
 }
 
 struct CommandClearHistory;
 impl Command for CommandClearHistory {
-    fn handle_command(&self, _registry: &CommandRegistry, _args: Vec<&str>, _app: Rc<RefCell<Application>>) -> Result<(), CommandError> {
+    fn handle_command(
+        &self,
+        _registry: &CommandRegistry,
+        _args: Vec<&str>,
+        _app: Rc<RefCell<Application>>,
+    ) -> Result<(), CommandError> {
         if let Err(e) = remove_file(HISTORY_FILE) {
-            eprintln!("Failed to clear history: {}", e);
+            eprint!("Failed to clear history: {}\r\n", e);
         } else {
-            println!("History cleared.");
+            print!("History cleared.\r\n");
         }
         Ok(())
     }
@@ -188,7 +222,12 @@ impl Command for CommandClearHistory {
 
 struct CommandDelete;
 impl Command for CommandDelete {
-    fn handle_command(&self, _registry: &CommandRegistry, _args: Vec<&str>, app: Rc<RefCell<Application>>) -> Result<(), CommandError> {
+    fn handle_command(
+        &self,
+        _registry: &CommandRegistry,
+        _args: Vec<&str>,
+        app: Rc<RefCell<Application>>,
+    ) -> Result<(), CommandError> {
         let app = app.borrow_mut();
         let shared_context = &app.context;
         let messages = app.tokio_rt.block_on(async {
@@ -202,12 +241,12 @@ impl Command for CommandDelete {
             messages_choice.push(msg);
         }
 
-        let mut selections = MultiSelect::with_theme(&ColorfulTheme::default())
-            .with_prompt("Select messages to delete")
-            .items(&messages_choice)
-            .interact()
-            .unwrap();
-        selections.sort_by(|a, b| b.cmp(a));
+        let selections = CLI::select("Select messages to delete", &messages_choice, false, &[]);
+        //        let mut selections = MultiSelect::with_theme(&ColorfulTheme::default())
+        //            .with_prompt("Select messages to delete")
+        //            .items(&messages_choice)
+        //            .interact()
+        //            .unwrap();
 
         app.tokio_rt.block_on(async {
             let mut locked = shared_context.lock().await;
@@ -223,10 +262,15 @@ impl Command for CommandDelete {
 
 struct CommandHelp;
 impl Command for CommandHelp {
-    fn handle_command(&self, registry: &CommandRegistry, _args: Vec<&str>, _app: Rc<RefCell<Application>>) -> Result<(), CommandError> {
-        println!("Available commands:");
+    fn handle_command(
+        &self,
+        registry: &CommandRegistry,
+        _args: Vec<&str>,
+        _app: Rc<RefCell<Application>>,
+    ) -> Result<(), CommandError> {
+        print!("Available commands:\r\n");
         for name in registry.get_available_commands() {
-            println!("- {}", name);
+            print!("- {}\r\n", name);
         }
         Ok(())
     }
@@ -234,7 +278,12 @@ impl Command for CommandHelp {
 
 struct CommandSetModel;
 impl Command for CommandSetModel {
-    fn handle_command(&self, _registry: &CommandRegistry, args: Vec<&str>, app: Rc<RefCell<Application>>) -> Result<(), CommandError> {
+    fn handle_command(
+        &self,
+        _registry: &CommandRegistry,
+        args: Vec<&str>,
+        app: Rc<RefCell<Application>>,
+    ) -> Result<(), CommandError> {
         let mut app = app.borrow_mut();
 
         let mut available_models: Vec<String> = vec![];
@@ -243,47 +292,70 @@ impl Command for CommandSetModel {
             available_models = match openai::get_models().await {
                 Some(x) => x,
                 None => {
-                    println!("Failed to fetch available models from OpenAI.");
-                    openai::AVAILABLE_MODELS.iter().map(|m| m.to_string()).collect()
-                },
+                    print!("Failed to fetch available models from OpenAI.\r\n");
+                    openai::AVAILABLE_MODELS
+                        .iter()
+                        .map(|m| m.to_string())
+                        .collect()
+                }
             }
         });
 
         let model_idx;
         if args.len() != 0 {
-            match available_models.iter().position(|r| r == args[0])  {
-                Some(x) => {
-                    model_idx = x
-                },
+            match available_models.iter().position(|r| r == args[0]) {
+                Some(x) => model_idx = x,
                 None => {
                     return Err(CommandError::InvalidModel);
                 }
             };
         } else {
-            let initial = available_models.iter().position(|r| *r == app.model).unwrap();
-            model_idx = Select::with_theme(&ColorfulTheme::default())
-                .with_prompt(format!("Select a model to use. You are using {}.", app.model))
-                .items(&available_models)
-                .default(initial)
-                .interact()
+            let initial = available_models
+                .iter()
+                .position(|r| *r == app.model)
                 .unwrap();
+            model_idx = *CLI::select(
+                &format!("Select a model to use. You are using {}.", app.model),
+                &available_models,
+                true,
+                &[initial],
+            )
+            .get(0)
+            .unwrap_or(&0);
+            //model_idx = Select::with_theme(&ColorfulTheme::default())
+            //    .with_prompt(format!(
+            //        "Select a model to use. You are using {}.",
+            //        app.model
+            //    ))
+            //    .items(&available_models)
+            //    .default(initial)
+            //    .interact()
+            //    .unwrap();
         }
 
         app.model = available_models[model_idx].clone();
-        println!("Model changed to {}!", app.model);
+        print!("Model changed to {}!\r\n", app.model);
         Ok(())
     }
 }
 
 struct CommandSystemEdit;
 impl Command for CommandSystemEdit {
-    fn handle_command(&self, _registry: &CommandRegistry, args: Vec<&str>, app: Rc<RefCell<Application>>) -> Result<(), CommandError> {
+    fn handle_command(
+        &self,
+        _registry: &CommandRegistry,
+        args: Vec<&str>,
+        app: Rc<RefCell<Application>>,
+    ) -> Result<(), CommandError> {
         let mut app = app.borrow_mut();
 
         let available_prompts = app.system_prompts.get_available();
         let name = match get_input_or_select(
             &args,
-            &available_prompts.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+            &available_prompts
+                .iter()
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>(),
             "Select a system prompt:",
             Some(&app.active_system_prompt),
         ) {
@@ -296,11 +368,14 @@ impl Command for CommandSystemEdit {
             _ => "You are a helpful virtual assistant.".to_string(),
         };
 
-        if let Some(inp) = Editor::new().edit(&existing_data).unwrap() {
+        if let Some(inp) = CLI::editor(&existing_data) {
             match app.system_prompts.update_or_create(&name, &inp) {
-                Ok(_) => {println!("Prompt updated."); Ok(())}
+                Ok(_) => {
+                    print!("Prompt updated.\r\n");
+                    Ok(())
+                }
                 Err(e) => {
-                    println!("Failed to update. Reason: {}", e);
+                    print!("Failed to update. Reason: {}\r\n", e);
                     Err(CommandError::UpdateFailed)
                 }
             }
@@ -312,13 +387,21 @@ impl Command for CommandSystemEdit {
 
 struct CommandSystemRemove;
 impl Command for CommandSystemRemove {
-    fn handle_command(&self, _registry: &CommandRegistry, args: Vec<&str>, app: Rc<RefCell<Application>>) -> Result<(), CommandError> {
+    fn handle_command(
+        &self,
+        _registry: &CommandRegistry,
+        args: Vec<&str>,
+        app: Rc<RefCell<Application>>,
+    ) -> Result<(), CommandError> {
         let mut app = app.borrow_mut();
 
         let available_prompts = app.system_prompts.get_available();
         let name = match get_input_or_select(
             &args,
-            &available_prompts.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+            &available_prompts
+                .iter()
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>(),
             "Select a system prompt:",
             Some(&app.active_system_prompt),
         ) {
@@ -334,13 +417,21 @@ impl Command for CommandSystemRemove {
 
 struct CommandSystemUse;
 impl Command for CommandSystemUse {
-    fn handle_command(&self, _registry: &CommandRegistry, args: Vec<&str>, app: Rc<RefCell<Application>>) -> Result<(), CommandError> {
+    fn handle_command(
+        &self,
+        _registry: &CommandRegistry,
+        args: Vec<&str>,
+        app: Rc<RefCell<Application>>,
+    ) -> Result<(), CommandError> {
         let mut app = app.borrow_mut();
 
         let available_prompts = app.system_prompts.get_available();
         let name = match get_input_or_select(
             &args,
-            &available_prompts.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+            &available_prompts
+                .iter()
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>(),
             "Select a system prompt:",
             Some(&app.active_system_prompt),
         ) {
@@ -356,10 +447,8 @@ impl Command for CommandSystemUse {
             Some(x) => {
                 app.active_system_prompt = name;
                 x
-            },
-            None => {
-                return Err(CommandError::InvalidSystemPrompt)
             }
+            None => return Err(CommandError::InvalidSystemPrompt),
         };
 
         let shared_context = &app.context;
@@ -372,4 +461,3 @@ impl Command for CommandSystemUse {
         Ok(())
     }
 }
-

@@ -1,4 +1,5 @@
 mod application;
+mod cli;
 mod commands;
 mod history;
 mod models;
@@ -6,11 +7,11 @@ mod openai;
 mod response;
 mod system_prompt;
 
+use cli::CLI;
 use clipboard::{ClipboardContext, ClipboardProvider};
-use dialoguer::{theme::ColorfulTheme, Input, Editor};
 use openai::send_request;
 use std::cell::RefCell;
-use std::io::{self, IsTerminal, BufRead, Write};
+use std::io::{self, BufRead, IsTerminal, Write};
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -24,10 +25,10 @@ fn main() -> ! {
         match gapp.borrow_mut().session_history.load_history() {
             Ok(entries) => {
                 for entry in entries {
-                    println!(" {}", entry);
+                    print!(" {}\r\n", entry);
                 }
             }
-            Err(e) => eprintln!("Failed to load history: {}", e),
+            Err(e) => eprint!("Failed to load history: {}\r\n", e),
         }
     }
 
@@ -39,22 +40,23 @@ fn main() -> ! {
             }
         } else {
             {
-                let mut app = gapp.borrow_mut();
-                input = Input::<String>::with_theme(&ColorfulTheme::default())
-                    .with_prompt(whoami::realname()) // Add newline before prompt
-                    .completion_with(&mut command_registry)
-                    .history_with(&mut app.cli_history)
-                    .interact_text()
-                    .unwrap()
-                    .trim()
-                    .to_owned();
+                //let mut app = gapp.borrow_mut();
+                input = CLI::read_line(&format!("{}> ", whoami::realname())).unwrap();
+                //input = Input::<String>::with_theme(&ColorfulTheme::default())
+                //    .with_prompt() // Add newline before prompt
+                //    .completion_with(&mut command_registry)
+                //    .history_with(&mut app.cli_history)
+                //    .interact_text()
+                //    .unwrap()
+                //    .trim()
+                //    .to_owned();
             }
 
             // Save the input to history
             {
                 let app = gapp.borrow_mut();
                 if let Err(e) = app.session_history.save_entry(&input) {
-                    eprintln!("Failed to save entry: {}", e);
+                    eprint!("Failed to save entry: {}\r\n", e);
                 }
             }
 
@@ -87,29 +89,30 @@ fn main() -> ! {
                             std::io::stdout().flush().unwrap();
 
                             let additional_input =
-                                Input::<String>::with_theme(&ColorfulTheme::default())
-                                    .with_prompt("Add additional details")
-                                    .interact_text()
-                                    .unwrap();
+                                CLI::read_line("Add additional details").unwrap();
+                            //Input::<String>::with_theme(&ColorfulTheme::default())
+                            //    .with_prompt("Add additional details")
+                            //    .interact_text()
+                            //    .unwrap();
 
                             // Aggregate the clipboard content and additional input
                             input.push_str(&paste_content);
                             input.push_str(&additional_input);
                         }
-                        Err(err) => eprintln!("Failed to read clipboard: {}", err),
+                        Err(err) => eprint!("Failed to read clipboard: {}\r\n", err),
                     }
                 } else if name == "editor" {
-                    if let Some(inp) = Editor::new().edit("").unwrap() {
+                    if let Some(inp) = CLI::editor("") {
                         input = inp
                     } else {
-                        println!("Aborted!");
+                        write!(std::io::stdout(), "Aborted!\n");
                         continue;
                     }
                 } else {
                     let res = command_registry.execute_command(name, args, gapp.clone());
                     match res {
-                        Ok(()) => println!("Command executed successfuly!"),
-                        Err(e) => println!("Failed to execute command. Reason: {:?}", e),
+                        Ok(()) => print!("Command executed successfuly!\r\n"),
+                        Err(e) => print!("Failed to execute command. Reason: {:?}\r\n", e),
                     }
 
                     continue;
@@ -136,16 +139,16 @@ fn main() -> ! {
                     Ok(resp) => {
                         // Save the GPT response to history
                         if let Err(e) = app.session_history.save_response(&resp) {
-                            eprintln!("Failed to save response: {}", e);
+                            eprint!("Failed to save response: {}\r\n", e);
                         }
                     }
-                    Err(err) => eprintln!("Failed to process response: {}", err),
+                    Err(err) => eprint!("Failed to process response: {}\r\n", err),
                 }
             }
-            Err(err) => eprintln!("Request failed: {}", err),
+            Err(err) => eprint!("Request failed: {}\r\n", err),
         }
 
-        println!();
+        print!("\r\n");
         std::io::stdout().flush().unwrap();
 
         if !io::stdin().is_terminal() {

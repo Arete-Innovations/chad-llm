@@ -1,5 +1,5 @@
 use bat::PrettyPrinter;
-use std::io::{Error, IsTerminal, self};
+use std::io::{self, Error, IsTerminal};
 use std::pin::Pin;
 use tokio_stream::StreamExt;
 
@@ -56,7 +56,7 @@ pub async fn process_response(
                             language = String::new();
 
                             if content.ends_with('\n') {
-                                println!();
+                                print!("\r\n");
                             }
 
                             current_code_block_content = String::new();
@@ -73,7 +73,7 @@ pub async fn process_response(
                 }
             }
             Err(err) => {
-                eprintln!("Error: {}", err);
+                eprint!("Error: {}\r\n", err);
             }
         }
     }

@@ -1,5 +1,5 @@
 use dirs::data_dir;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 use std::collections::HashMap;
 use std::error::Error;
@@ -38,10 +38,11 @@ impl SystemPrompts {
             prompts: HashMap::new(),
         };
         if let Err(err) = this.import() {
-            println!("Failed to import system prompts. Reason: {}", err);
+            print!("Failed to import system prompts. Reason: {}\r\n", err);
         }
         if this.prompts.is_empty() {
-            this.update_or_create("default", "You are a helpful assistant.").unwrap();
+            this.update_or_create("default", "You are a helpful assistant.")
+                .unwrap();
         }
         this
     }
@@ -58,11 +59,9 @@ impl SystemPrompts {
         return self.prompts.get(name);
     }
 
-    pub fn update(&mut self, name: &str, contents: &str) -> Result<(), Box<dyn Error>>  {
+    pub fn update(&mut self, name: &str, contents: &str) -> Result<(), Box<dyn Error>> {
         match self.prompts.get_mut(name) {
-            None => {
-                return Err(Box::new(SystemPromptsError::FailedToFindPrompt))
-            }
+            None => return Err(Box::new(SystemPromptsError::FailedToFindPrompt)),
             Some(string) => {
                 *string = contents.to_string();
                 self.export()
@@ -117,4 +116,3 @@ impl Drop for SystemPrompts {
         self.export().unwrap();
     }
 }
-
