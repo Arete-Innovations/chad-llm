@@ -11,6 +11,29 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::cell::RefCell;
 
+fn get_input_or_select<'a>(
+    args: &[&str],
+    available: &'a [&'a str],
+    prompt: &str,
+    default: Option<&str>,
+) -> Option<String> {
+    if let Some(&arg) = args.get(0) {
+        return Some(arg.to_string());
+    }
+
+    let initial = default
+        .and_then(|d| available.iter().position(|&r| r == d))
+        .unwrap_or(0);
+
+    Select::with_theme(&ColorfulTheme::default())
+        .with_prompt(prompt)
+        .items(available)
+        .default(initial)
+        .interact()
+        .ok()
+        .map(|idx| available[idx].to_string())
+}
+
 impl Completion for CommandRegistry {
     fn get(&self, input: &str) -> Option<String> {
         let inp = input.to_string();
@@ -256,22 +279,17 @@ struct CommandSystemEdit;
 impl Command for CommandSystemEdit {
     fn handle_command(&self, _registry: &CommandRegistry, args: Vec<&str>, app: Rc<RefCell<Application>>) -> Result<(), CommandError> {
         let mut app = app.borrow_mut();
-        let available = app.system_prompts.get_available();
 
-        let name: String;
-        if args.len() == 0 {
-            let active = app.active_system_prompt.clone();
-            let initial = available.iter().position(|r| *r == *active).unwrap_or(0);
-            let model_idx = Select::with_theme(&ColorfulTheme::default())
-                .with_prompt(format!("Select a system prompt to edit. You are using {:?}.", app.active_system_prompt))
-                .items(&available)
-                .default(initial)
-                .interact()
-                .unwrap();
-            name = available.get(model_idx).unwrap().clone();
-        } else {
-            name = args.get(0).unwrap().to_string();
-        }
+        let available_prompts = app.system_prompts.get_available();
+        let name = match get_input_or_select(
+            &args,
+            &available_prompts.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+            "Select a system prompt:",
+            Some(&app.active_system_prompt),
+        ) {
+            Some(name) => name,
+            None => return Err(CommandError::Aborted),
+        };
 
         let existing_data = match app.system_prompts.get(&name) {
             Some(x) => x.clone(),
@@ -296,22 +314,17 @@ struct CommandSystemRemove;
 impl Command for CommandSystemRemove {
     fn handle_command(&self, _registry: &CommandRegistry, args: Vec<&str>, app: Rc<RefCell<Application>>) -> Result<(), CommandError> {
         let mut app = app.borrow_mut();
-        let available = app.system_prompts.get_available();
 
-        let name;
-        if args.len() == 0 {
-            let active = app.active_system_prompt.clone();
-            let initial = available.iter().position(|r| *r == *active).unwrap_or(0);
-            let model_idx = Select::with_theme(&ColorfulTheme::default())
-                .with_prompt(format!("Select a system prompt to remove. You are using {:?}.", app.active_system_prompt))
-                .items(&available)
-                .default(initial)
-                .interact()
-                .unwrap();
-            name = (*available.get(model_idx).unwrap()).clone();
-        } else {
-            name = args.get(0).unwrap().to_string();
-        }
+        let available_prompts = app.system_prompts.get_available();
+        let name = match get_input_or_select(
+            &args,
+            &available_prompts.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+            "Select a system prompt:",
+            Some(&app.active_system_prompt),
+        ) {
+            Some(name) => name,
+            None => return Err(CommandError::Aborted),
+        };
 
         app.system_prompts.remove(&name);
 
@@ -323,22 +336,17 @@ struct CommandSystemUse;
 impl Command for CommandSystemUse {
     fn handle_command(&self, _registry: &CommandRegistry, args: Vec<&str>, app: Rc<RefCell<Application>>) -> Result<(), CommandError> {
         let mut app = app.borrow_mut();
-        let available = app.system_prompts.get_available();
 
-        let name;
-        if args.len() == 0 {
-            let active = app.active_system_prompt.clone();
-            let initial = available.iter().position(|r| *r == *active).unwrap_or(0);
-            let model_idx = Select::with_theme(&ColorfulTheme::default())
-                .with_prompt(format!("Select a system prompt to remove. You are using {:?}.", app.active_system_prompt))
-                .items(&available)
-                .default(initial)
-                .interact()
-                .unwrap();
-            name = (*available.get(model_idx).unwrap()).clone();
-        } else {
-            name = args.get(0).unwrap().to_string();
-        }
+        let available_prompts = app.system_prompts.get_available();
+        let name = match get_input_or_select(
+            &args,
+            &available_prompts.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+            "Select a system prompt:",
+            Some(&app.active_system_prompt),
+        ) {
+            Some(name) => name,
+            None => return Err(CommandError::Aborted),
+        };
 
         let contents = match app.system_prompts.get(&name) {
             Some(x) => Some(x.clone()),

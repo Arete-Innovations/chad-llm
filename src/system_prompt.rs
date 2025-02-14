@@ -4,7 +4,7 @@ use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 use std::error::Error;
 
-const FILE_NAME: &'static str = "chad-llm/system_prompts.json";
+const FILE_NAME: &'static str = "system_prompts.json";
 
 #[derive(Serialize, Deserialize)]
 pub struct SystemPrompts {
@@ -75,6 +75,7 @@ impl SystemPrompts {
             Ok(()) => Ok(()),
             Err(_) => {
                 self.prompts.insert(name.to_owned(), contents.to_owned());
+                self.export()?;
                 Ok(())
             }
         }
@@ -86,14 +87,13 @@ impl SystemPrompts {
 
     fn get_file_path() -> std::path::PathBuf {
         let mut path = data_dir().unwrap();
-        path.push("chad-llm/");
+        path.push("./chad-llm/");
         path.push(FILE_NAME);
         path
     }
 
     fn import(&mut self) -> Result<(), Box<dyn Error>> {
         let path = Self::get_file_path();
-        let path = path.as_path();
         let file_contents = std::fs::read_to_string(path)?;
         let read: Self = serde_json::from_str(&file_contents)?;
 
@@ -104,9 +104,9 @@ impl SystemPrompts {
 
     fn export(&self) -> Result<(), Box<dyn Error>> {
         let path = Self::get_file_path();
-        let path = path.as_path();
 
         let j = serde_json::to_string(&self)?;
+        let _ = std::fs::remove_file(&path);
         std::fs::write(path, j)?;
         Ok(())
     }

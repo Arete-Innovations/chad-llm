@@ -42,7 +42,7 @@ impl Application {
         };
         let mut path = data_dir().unwrap();
         path.push("chad-llm/");
-        std::fs::create_dir(path.as_path()).unwrap();
+        let _ = std::fs::create_dir(path.as_path());
         app
     }
 
