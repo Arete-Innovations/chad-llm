@@ -4,6 +4,7 @@ mod history;
 mod models;
 mod openai;
 mod response;
+mod system_prompt;
 
 use clipboard::{ClipboardContext, ClipboardProvider};
 use dialoguer::{theme::ColorfulTheme, Input, Editor};

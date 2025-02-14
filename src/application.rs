@@ -1,6 +1,7 @@
 use crate::openai;
 use crate::history;
 use crate::openai::AVAILABLE_MODELS;
+use crate::system_prompt::SystemPrompts;
 
 use tokio::runtime::Runtime;
 use history::History;
@@ -16,6 +17,8 @@ pub struct Application {
     pub session_history: History, // FIXME: Remove, we have SharedContext.
     pub code_blocks: Vec<String>,
     pub model: String,
+    pub system_prompts: SystemPrompts,
+    pub active_system_prompt: Option<String>,
 }
 
 pub const HISTORY_FILE: &str = "session_history.txt";
@@ -28,7 +31,9 @@ impl Application {
             cli_history: BasicHistory::new().max_entries(99).no_duplicates(false),
             session_history: History::new(HISTORY_FILE),
             code_blocks: Vec::new(),
-            model: AVAILABLE_MODELS[0].to_owned()
+            model: AVAILABLE_MODELS[0].to_owned(),
+            system_prompts: SystemPrompts::new(),
+            active_system_prompt: None,
         }
     }
 }
