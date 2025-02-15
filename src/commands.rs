@@ -242,12 +242,13 @@ impl Command for CommandDelete {
             messages_choice.push(msg);
         }
 
-        let selections = CLI::select("Select messages to delete", &messages_choice, false, &[]);
+        let mut selections = CLI::select("Select messages to delete", &messages_choice, false, &[]);
         //        let mut selections = MultiSelect::with_theme(&ColorfulTheme::default())
         //            .with_prompt("Select messages to delete")
         //            .items(&messages_choice)
         //            .interact()
         //            .unwrap();
+        selections.sort_by(|a, b| b.cmp(a));
 
         app.tokio_rt.block_on(async {
             let mut locked = shared_context.lock().await;

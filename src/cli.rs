@@ -14,6 +14,14 @@ use rand::{self, Rng};
 
 pub struct CLI;
 
+fn truncate_string(s: &str, max_len: usize) -> String {
+    if s.chars().count() > max_len {
+        s.chars().take(max_len - 3).collect::<String>() + "..."
+    } else {
+        s.to_string()
+    }
+}
+
 impl CLI {
     pub fn new() -> Self {
         if io::stdin().is_terminal() {
@@ -96,19 +104,14 @@ impl CLI {
         let mut selected_indices: Vec<usize> = selected.to_vec();
         let mut current_index = selected.first().copied().unwrap_or(0);
         let visible_count = 5.min(options.len());
-        for _ in 0..visible_count {
+        write!(std::io::stdout(), "{}\r", prompt).unwrap();
+
+        for _ in 0..=visible_count {
             print!("\r\n");
         }
 
-        let mut offset = if current_index >= visible_count {
-            current_index + 1 - visible_count
-        } else {
-            0
-        };
-
+        let mut offset = current_index.saturating_sub(visible_count - 1);
         let mut stdout = io::stdout();
-
-        write!(std::io::stdout(), "{}", prompt).unwrap();
 
         fn clear(stdout: &mut io::Stdout, visible_count: usize) {
             execute!(stdout, terminal::Clear(ClearType::CurrentLine)).unwrap();
@@ -146,7 +149,13 @@ impl CLI {
                 } else {
                     print!("[ ] ");
                 }
-                print!("{}\r\n", options[i].to_string());
+                let str = options[i]
+                    .to_string()
+                    .replace("\n", "")
+                    .replace("\r", "")
+                    .replace("\t", " ");
+                let str = truncate_string(&str, terminal::size().unwrap().0 as usize - 10);
+                write!(std::io::stdout(), "{}\r\n", str).unwrap();
             }
             stdout.flush().unwrap();
         }
@@ -168,7 +177,7 @@ impl CLI {
                             if current_index > 0 {
                                 current_index -= 1;
                                 if current_index < offset {
-                                    offset -= 1;
+                                    offset = current_index;
                                 }
                             }
                         }
@@ -176,7 +185,7 @@ impl CLI {
                             if current_index < options.len() - 1 {
                                 current_index += 1;
                                 if current_index >= offset + visible_count {
-                                    offset += 1;
+                                    offset = current_index - visible_count + 1;
                                 }
                             }
                         }
@@ -215,14 +224,14 @@ impl CLI {
             }
         }
 
-        for _ in 0..visible_count {
+        for _ in 0..=visible_count {
             execute!(std::io::stdout(), cursor::MoveUp(1)).unwrap();
         }
 
-        clear(&mut std::io::stdout(), visible_count);
-
+        clear(&mut std::io::stdout(), visible_count + 1);
         stdout.flush().unwrap();
 
+        selected_indices.sort_unstable();
         selected_indices
     }
 
@@ -241,6 +250,9 @@ impl CLI {
                 if let Event::Key(key_event) = event::read().unwrap() {
                     let now = Instant::now();
                     let elapsed = now.duration_since(last_time).as_millis();
+                    if elapsed > 30 {
+                        in_paste = false;
+                    }
 
                     match key_event.code {
                         KeyCode::Char(c) => {
@@ -253,13 +265,12 @@ impl CLI {
                             read_so_far.insert(cur_pos, c);
                             cur_pos += 1;
 
-                            print!("\r{}{}", prompt, read_so_far);
+                            write!(std::io::stdout(), "\r{}{}", prompt, read_so_far).unwrap();
                             execute!(
                                 io::stdout(),
                                 cursor::MoveToColumn((prompt.len() + cur_pos) as u16)
                             )
                             .unwrap();
-                            io::stdout().flush().unwrap();
                         }
                         KeyCode::Left => {
                             if cur_pos > 0 {
@@ -278,7 +289,7 @@ impl CLI {
                                 read_so_far.remove(cur_pos - 1);
                                 cur_pos -= 1;
 
-                                print!("\r{}{}", prompt, read_so_far);
+                                write!(std::io::stdout(), "\r{}{}", prompt, read_so_far).unwrap();
                                 print!(" ");
                                 execute!(
                                     io::stdout(),
@@ -292,21 +303,20 @@ impl CLI {
                             if cur_pos < read_so_far.len() {
                                 read_so_far.remove(cur_pos);
 
-                                print!("\r{}{}", prompt, read_so_far);
+                                write!(std::io::stdout(), "\r{}{}", prompt, read_so_far).unwrap();
                                 print!(" ");
                                 execute!(
                                     io::stdout(),
                                     cursor::MoveToColumn((prompt.len() + cur_pos) as u16)
                                 )
                                 .unwrap();
-                                io::stdout().flush().unwrap();
                             }
                         }
                         KeyCode::Enter => {
                             print!("\r\n");
                             io::stdout().flush().unwrap();
 
-                            if !in_paste && elapsed > 20 {
+                            if !in_paste {
                                 break;
                             }
                         }
@@ -316,9 +326,11 @@ impl CLI {
                         }
                         _ => {}
                     }
+                    io::stdout().flush().unwrap();
                 }
             }
         }
+        io::stdout().flush().unwrap();
 
         Some(read_so_far)
     }
