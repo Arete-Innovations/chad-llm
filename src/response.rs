@@ -1,8 +1,7 @@
-use std::io::{self, Error, IsTerminal};
-use std::pin::Pin;
-
 use bat::PrettyPrinter;
-use crossterm::terminal;
+use std::io::IsTerminal;
+use std::pin::Pin;
+use tokio::io::{self, AsyncWriteExt, Error};
 use tokio_stream::StreamExt;
 
 pub async fn process_response(
@@ -15,71 +14,83 @@ pub async fn process_response(
     let mut language = String::new();
     let mut full_response = String::new();
     let mut current_code_block_content = String::new();
-    let mut tickcnt = 0;
+    let mut tick_count = 0;
+    let stdout_is_terminal = std::io::stdout().is_terminal();
 
-    let _ = terminal::disable_raw_mode();
     while let Some(chunk) = stream.next().await {
         match chunk {
             Ok(content) => {
-                if !io::stdout().is_terminal() {
-                    print!("{}", content);
-                } else {
-                    for ch in content.chars() {
-                        if ch == '`' {
-                            tickcnt += 1;
-                        }
-                    }
+                let mut chars = content.chars().peekable();
 
-                    full_response.push_str(&content);
-                    if !in_code_block {
-                        if tickcnt == 3 {
-                            tickcnt = 0;
-                            in_code_block = true;
-                            language = String::new();
-                        } else {
-                            print!("{}", content);
+                while let Some(ch) = chars.next() {
+                    if ch == '`' {
+                        tick_count += 1;
+                        if tick_count == 3 {
+                            tick_count = 0;
+
+                            if in_code_block {
+                                in_code_block = false;
+                                code_blocks.push(current_code_block_content.clone());
+
+                                println!("```{}", language);
+                                if stdout_is_terminal {
+                                    let mut pp = PrettyPrinter::new();
+                                    pp.input_from_bytes(current_code_block_content.as_bytes())
+                                        .colored_output(true);
+
+                                    if !language.trim().is_empty() {
+                                        pp.language(&language);
+                                    }
+
+                                    pp.print().unwrap();
+                                } else {
+                                    println!("{}", current_code_block_content);
+                                }
+                                println!("```");
+
+                                current_code_block_content.clear();
+                                language.clear();
+                            } else {
+                                in_code_block = true;
+                                language.clear();
+                            }
                         }
                     } else {
-                        if tickcnt == 3 {
-                            tickcnt = 0;
-                            in_code_block = false;
-
-                            code_blocks.push(current_code_block_content.clone());
-                            let block = current_code_block_content.clone();
-                            let l = language.clone();
-
-                            let mut pp = PrettyPrinter::new();
-                            pp.input_from_bytes(block.as_bytes()).colored_output(true);
-                            if language != " " {
-                                pp.language(&l);
+                        if tick_count > 0 {
+                            full_response.push_str(&"`".repeat(tick_count));
+                            if stdout_is_terminal {
+                                print!("{}", "`".repeat(tick_count));
+                                io::stdout().flush().await.unwrap();
                             }
+                            tick_count = 0;
+                        }
 
-                            pp.print().unwrap();
-
-                            language = String::new();
-
-                            if content.ends_with('\n') {
-                                print!("\r\n");
-                            }
-
-                            current_code_block_content = String::new();
-                        } else if language == "" {
-                            if content == "\n" {
-                                language = " ".to_string();
+                        if in_code_block {
+                            if language.is_empty() {
+                                if ch == '\n' {
+                                    language = " ".to_string();
+                                } else {
+                                    language.push(ch);
+                                }
                             } else {
-                                language = content.trim().to_string();
+                                current_code_block_content.push(ch);
                             }
                         } else {
-                            current_code_block_content.push_str(&content);
+                            full_response.push(ch);
+                            if stdout_is_terminal {
+                                print!("{}", ch);
+                                io::stdout().flush().await.unwrap();
+                            }
                         }
                     }
                 }
             }
             Err(err) => {
                 eprint!("Error: {}\r\n", err);
+                return Err(err);
             }
         }
     }
-    let _ = terminal::enable_raw_mode();
+
     Ok(full_response)
 }

@@ -24,9 +24,7 @@ fn truncate_string(s: &str, max_len: usize) -> String {
 
 impl CLI {
     pub fn new() -> Self {
-        if io::stdin().is_terminal() {
-            terminal::enable_raw_mode().expect("Failed to set terminal to raw mode.");
-        }
+        if io::stdin().is_terminal() {}
         Self {}
     }
 
@@ -101,6 +99,8 @@ impl CLI {
         single: bool,
         selected: &[usize],
     ) -> Vec<usize> {
+        terminal::enable_raw_mode().expect("Failed to set terminal to raw mode.");
+
         let mut selected_indices: Vec<usize> = selected.to_vec();
         let mut current_index = selected.first().copied().unwrap_or(0);
         let visible_count = 5.min(options.len());
@@ -231,11 +231,15 @@ impl CLI {
         clear(&mut std::io::stdout(), visible_count + 1);
         stdout.flush().unwrap();
 
+        terminal::disable_raw_mode().expect("Failed to remove terminal to raw mode.");
+
         selected_indices.sort_unstable();
         selected_indices
     }
 
     pub fn read_line(prompt: &str) -> Option<String> {
+        terminal::enable_raw_mode().expect("Failed to set terminal to raw mode.");
+
         let mut last_time = Instant::now();
         let mut typed_chars = 0;
         let mut read_so_far = String::new();
@@ -332,14 +336,7 @@ impl CLI {
         }
         io::stdout().flush().unwrap();
 
+        terminal::disable_raw_mode().expect("Failed to remove terminal to raw mode.");
         Some(read_so_far)
-    }
-}
-
-impl Drop for CLI {
-    fn drop(&mut self) {
-        if io::stdin().is_terminal() {
-            let _ = terminal::disable_raw_mode();
-        }
     }
 }
