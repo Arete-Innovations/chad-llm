@@ -1,6 +1,8 @@
-use bat::PrettyPrinter;
 use std::io::{self, Error, IsTerminal};
 use std::pin::Pin;
+
+use bat::PrettyPrinter;
+use crossterm::terminal;
 use tokio_stream::StreamExt;
 
 pub async fn process_response(
@@ -15,6 +17,7 @@ pub async fn process_response(
     let mut current_code_block_content = String::new();
     let mut tickcnt = 0;
 
+    let _ = terminal::disable_raw_mode();
     while let Some(chunk) = stream.next().await {
         match chunk {
             Ok(content) => {
@@ -77,5 +80,6 @@ pub async fn process_response(
             }
         }
     }
+    let _ = terminal::enable_raw_mode();
     Ok(full_response)
 }

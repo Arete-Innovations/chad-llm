@@ -60,13 +60,19 @@ impl CLI {
             Err(_) => return None,
         };
 
-        let out = std::process::Command::new(editor)
+        let _ = terminal::disable_raw_mode();
+        let status = std::process::Command::new(editor)
             .args([fp.to_str()?])
-            .output()
+            .stdin(std::process::Stdio::inherit())
+            .stdout(std::process::Stdio::inherit())
+            .stderr(std::process::Stdio::inherit())
+            .status()
             .unwrap();
-        if !out.status.success() {
+
+        if !status.success() {
             return None;
         }
+        let _ = terminal::enable_raw_mode();
 
         let new = match std::fs::read(fp) {
             Ok(s) => s,
@@ -89,22 +95,46 @@ impl CLI {
     ) -> Vec<usize> {
         let mut selected_indices: Vec<usize> = selected.to_vec();
         let mut current_index = selected.first().copied().unwrap_or(0);
-        let mut offset = 0;
         let visible_count = 5.min(options.len());
+        for _ in 0..visible_count {
+            print!("\r\n");
+        }
+
+        let mut offset = if current_index >= visible_count {
+            current_index + 1 - visible_count
+        } else {
+            0
+        };
 
         let mut stdout = io::stdout();
 
+        write!(std::io::stdout(), "{}", prompt).unwrap();
+
+        fn clear(stdout: &mut io::Stdout, visible_count: usize) {
+            execute!(stdout, terminal::Clear(ClearType::CurrentLine)).unwrap();
+            for _ in 0..visible_count {
+                execute!(
+                    stdout,
+                    terminal::Clear(ClearType::CurrentLine),
+                    cursor::MoveDown(1)
+                )
+                .unwrap();
+            }
+            for _ in 0..visible_count {
+                execute!(stdout, cursor::MoveUp(1)).unwrap();
+            }
+        }
+
         fn draw<T: ToString>(
             stdout: &mut io::Stdout,
-            prompt: &str,
             options: &[T],
             current_index: usize,
             selected_indices: &[usize],
             offset: usize,
             visible_count: usize,
         ) {
-            execute!(stdout, terminal::Clear(ClearType::FromCursorUp)).unwrap();
-            print!("{}\n", prompt);
+            clear(stdout, visible_count);
+
             for i in offset..(offset + visible_count).min(options.len()) {
                 if i == current_index {
                     print!("> ");
@@ -123,7 +153,6 @@ impl CLI {
 
         draw(
             &mut stdout,
-            prompt,
             options,
             current_index,
             &selected_indices,
@@ -176,7 +205,6 @@ impl CLI {
 
                     draw(
                         &mut stdout,
-                        prompt,
                         options,
                         current_index,
                         &selected_indices,
@@ -187,8 +215,12 @@ impl CLI {
             }
         }
 
-        // Clear the picker after selection, keeping the prompt
-        execute!(stdout, terminal::Clear(ClearType::FromCursorUp)).unwrap();
+        for _ in 0..visible_count {
+            execute!(std::io::stdout(), cursor::MoveUp(1)).unwrap();
+        }
+
+        clear(&mut std::io::stdout(), visible_count);
+
         stdout.flush().unwrap();
 
         selected_indices
