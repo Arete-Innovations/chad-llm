@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 mod application;
 mod cli;
 mod commands;
@@ -40,16 +42,9 @@ fn main() {
             }
         } else {
             {
-                //let mut app = gapp.borrow_mut();
                 input = CLI::read_line(&format!("{}> ", whoami::realname())).unwrap();
-                //input = Input::<String>::with_theme(&ColorfulTheme::default())
-                //    .with_prompt() // Add newline before prompt
                 //    .completion_with(&mut command_registry)
                 //    .history_with(&mut app.cli_history)
-                //    .interact_text()
-                //    .unwrap()
-                //    .trim()
-                //    .to_owned();
             }
 
             // Save the input to history
@@ -90,10 +85,6 @@ fn main() {
 
                             let additional_input =
                                 CLI::read_line("Add additional details").unwrap();
-                            //Input::<String>::with_theme(&ColorfulTheme::default())
-                            //    .with_prompt("Add additional details")
-                            //    .interact_text()
-                            //    .unwrap();
 
                             // Aggregate the clipboard content and additional input
                             input.push_str(&paste_content);

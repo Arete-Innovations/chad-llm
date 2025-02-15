@@ -3,12 +3,11 @@ use crate::cli::CLI;
 use crate::openai;
 
 use clipboard::{ClipboardContext, ClipboardProvider};
-use fuzzy_matcher::clangd::fuzzy_match;
+//use fuzzy_matcher::clangd::fuzzy_match;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs::remove_file;
-use std::process;
 use std::rc::Rc;
 
 fn get_input_or_select<'a>(
@@ -130,7 +129,6 @@ impl Command for CommandExit {
         _args: Vec<&str>,
         _app: Rc<RefCell<Application>>,
     ) -> Result<(), CommandError> {
-        //process::exit(0);
         Ok(())
     }
 }
@@ -166,12 +164,6 @@ impl Command for CommandCopy {
         let selection = *CLI::select("Select code block to copy", &selections, true, &[0])
             .get(0)
             .unwrap_or(&0);
-        //let selection = Select::with_theme(&ColorfulTheme::default())
-        //    .with_prompt("Select code block to copy")
-        //    .items(&selections)
-        //    .default(0)
-        //    .interact()
-        //    .unwrap();
 
         let mut clipboard: ClipboardContext = ClipboardProvider::new().unwrap();
         clipboard
@@ -243,11 +235,6 @@ impl Command for CommandDelete {
         }
 
         let mut selections = CLI::select("Select messages to delete", &messages_choice, false, &[]);
-        //        let mut selections = MultiSelect::with_theme(&ColorfulTheme::default())
-        //            .with_prompt("Select messages to delete")
-        //            .items(&messages_choice)
-        //            .interact()
-        //            .unwrap();
         selections.sort_by(|a, b| b.cmp(a));
 
         app.tokio_rt.block_on(async {
@@ -324,15 +311,6 @@ impl Command for CommandSetModel {
             )
             .get(0)
             .unwrap_or(&0);
-            //model_idx = Select::with_theme(&ColorfulTheme::default())
-            //    .with_prompt(format!(
-            //        "Select a model to use. You are using {}.",
-            //        app.model
-            //    ))
-            //    .items(&available_models)
-            //    .default(initial)
-            //    .interact()
-            //    .unwrap();
         }
 
         app.model = available_models[model_idx].clone();
