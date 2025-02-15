@@ -1,12 +1,14 @@
 use std::time::{Duration, Instant};
 use std::{
     env::{self, VarError},
-    io::{self, Write},
+    io::{self, IsTerminal, Write},
 };
 
 use crossterm::{
+    cursor,
     event::{self, Event, KeyCode},
-    terminal,
+    execute,
+    terminal::{self, ClearType},
 };
 use rand::{self, Rng};
 
@@ -14,7 +16,9 @@ pub struct CLI;
 
 impl CLI {
     pub fn new() -> Self {
-        terminal::enable_raw_mode().expect("Failed to set terminal to raw mode.");
+        if io::stdin().is_terminal() {
+            terminal::enable_raw_mode().expect("Failed to set terminal to raw mode.");
+        }
         Self {}
     }
 
@@ -83,19 +87,49 @@ impl CLI {
         single: bool,
         selected: &[usize],
     ) -> Vec<usize> {
-        let mut selected_indices = Vec::new();
-        let mut current_index = 0;
+        let mut selected_indices: Vec<usize> = selected.to_vec();
+        let mut current_index = selected.first().copied().unwrap_or(0);
+        let mut offset = 0;
+        let visible_count = 5.min(options.len());
 
-        print!("{}\n", prompt);
-        for (i, option) in options.iter().enumerate() {
-            if i == current_index {
-                print!("> ");
-            } else {
-                print!("  ");
+        let mut stdout = io::stdout();
+
+        fn draw<T: ToString>(
+            stdout: &mut io::Stdout,
+            prompt: &str,
+            options: &[T],
+            current_index: usize,
+            selected_indices: &[usize],
+            offset: usize,
+            visible_count: usize,
+        ) {
+            execute!(stdout, terminal::Clear(ClearType::FromCursorUp)).unwrap();
+            print!("{}\n", prompt);
+            for i in offset..(offset + visible_count).min(options.len()) {
+                if i == current_index {
+                    print!("> ");
+                } else {
+                    print!("  ");
+                }
+                if selected_indices.contains(&i) {
+                    print!("[x] ");
+                } else {
+                    print!("[ ] ");
+                }
+                print!("{}\r\n", options[i].to_string());
             }
-            print!("{}\r\n", option.to_string());
+            stdout.flush().unwrap();
         }
-        io::stdout().flush().unwrap();
+
+        draw(
+            &mut stdout,
+            prompt,
+            options,
+            current_index,
+            &selected_indices,
+            offset,
+            visible_count,
+        );
 
         loop {
             if event::poll(Duration::from_millis(500)).unwrap() {
@@ -104,11 +138,17 @@ impl CLI {
                         KeyCode::Up => {
                             if current_index > 0 {
                                 current_index -= 1;
+                                if current_index < offset {
+                                    offset -= 1;
+                                }
                             }
                         }
                         KeyCode::Down => {
                             if current_index < options.len() - 1 {
                                 current_index += 1;
+                                if current_index >= offset + visible_count {
+                                    offset += 1;
+                                }
                             }
                         }
                         KeyCode::Char(' ') => {
@@ -134,26 +174,22 @@ impl CLI {
                         _ => {}
                     }
 
-                    CLI::clear();
-
-                    print!("{}\n", prompt);
-                    for (i, option) in options.iter().enumerate() {
-                        if i == current_index {
-                            print!("> ");
-                        } else {
-                            print!("  ");
-                        }
-                        if selected_indices.contains(&i) {
-                            print!("[x] ");
-                        } else {
-                            print!("[ ] ");
-                        }
-                        print!("{}\r\n", option.to_string());
-                    }
-                    io::stdout().flush().unwrap();
+                    draw(
+                        &mut stdout,
+                        prompt,
+                        options,
+                        current_index,
+                        &selected_indices,
+                        offset,
+                        visible_count,
+                    );
                 }
             }
         }
+
+        // Clear the picker after selection, keeping the prompt
+        execute!(stdout, terminal::Clear(ClearType::FromCursorUp)).unwrap();
+        stdout.flush().unwrap();
 
         selected_indices
     }
@@ -163,8 +199,11 @@ impl CLI {
         let mut typed_chars = 0;
         let mut read_so_far = String::new();
         let mut in_paste = false;
+        let mut cur_pos: usize = 0;
+
         print!("{}", prompt);
         io::stdout().flush().unwrap();
+
         loop {
             if event::poll(Duration::from_millis(500)).unwrap() {
                 if let Event::Key(key_event) = event::read().unwrap() {
@@ -176,17 +215,60 @@ impl CLI {
                             if typed_chars > 5 && elapsed < 10 {
                                 in_paste = true;
                             }
-
                             last_time = now;
                             typed_chars += 1;
 
-                            if c == '\n' {
-                                print!("\r\n");
-                            } else {
-                                print!("{}", c);
-                            }
-                            read_so_far.push(c);
+                            read_so_far.insert(cur_pos, c);
+                            cur_pos += 1;
+
+                            print!("\r{}{}", prompt, read_so_far);
+                            execute!(
+                                io::stdout(),
+                                cursor::MoveToColumn((prompt.len() + cur_pos) as u16)
+                            )
+                            .unwrap();
                             io::stdout().flush().unwrap();
+                        }
+                        KeyCode::Left => {
+                            if cur_pos > 0 {
+                                cur_pos -= 1;
+                                execute!(io::stdout(), cursor::MoveLeft(1)).unwrap();
+                            }
+                        }
+                        KeyCode::Right => {
+                            if cur_pos < read_so_far.len() {
+                                cur_pos += 1;
+                                execute!(io::stdout(), cursor::MoveRight(1)).unwrap();
+                            }
+                        }
+                        KeyCode::Backspace => {
+                            if cur_pos > 0 {
+                                read_so_far.remove(cur_pos - 1);
+                                cur_pos -= 1;
+
+                                print!("\r{}{}", prompt, read_so_far);
+                                print!(" ");
+                                execute!(
+                                    io::stdout(),
+                                    cursor::MoveToColumn((prompt.len() + cur_pos) as u16)
+                                )
+                                .unwrap();
+                                io::stdout().flush().unwrap();
+                            }
+                        }
+                        KeyCode::Delete => {
+                            if cur_pos < read_so_far.len() {
+                                read_so_far.remove(cur_pos);
+
+                                print!("\r{}{}", prompt, read_so_far);
+                                print!(" ");
+                                execute!(
+                                    io::stdout(),
+                                    cursor::MoveToColumn((prompt.len() + cur_pos) as u16)
+                                )
+                                .unwrap();
+                                io::stdout().flush().unwrap();
+                            }
                         }
                         KeyCode::Enter => {
                             print!("\r\n");
@@ -212,6 +294,8 @@ impl CLI {
 
 impl Drop for CLI {
     fn drop(&mut self) {
-        let _ = terminal::disable_raw_mode();
+        if io::stdin().is_terminal() {
+            let _ = terminal::disable_raw_mode();
+        }
     }
 }

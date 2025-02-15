@@ -130,7 +130,8 @@ impl Command for CommandExit {
         _args: Vec<&str>,
         _app: Rc<RefCell<Application>>,
     ) -> Result<(), CommandError> {
-        process::exit(0);
+        //process::exit(0);
+        Ok(())
     }
 }
 

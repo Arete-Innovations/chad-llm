@@ -15,7 +15,7 @@ use std::io::{self, BufRead, IsTerminal, Write};
 use std::rc::Rc;
 use std::sync::Arc;
 
-fn main() -> ! {
+fn main() {
     let gapp = Rc::new(RefCell::new(application::Application::new()));
     let mut command_registry = commands::CommandRegistry::new();
     command_registry.register_default_commands();
@@ -105,9 +105,11 @@ fn main() -> ! {
                     if let Some(inp) = CLI::editor("") {
                         input = inp
                     } else {
-                        write!(std::io::stdout(), "Aborted!\n");
+                        print!("Aborted!\r\n");
                         continue;
                     }
+                } else if name == "quit" || name == "exit" {
+                    break;
                 } else {
                     let res = command_registry.execute_command(name, args, gapp.clone());
                     match res {
@@ -152,7 +154,7 @@ fn main() -> ! {
         std::io::stdout().flush().unwrap();
 
         if !io::stdin().is_terminal() {
-            std::process::exit(0);
+            break;
         }
     }
 }
