@@ -12,6 +12,126 @@ use crossterm::{
 };
 use rand::{self, Rng};
 
+pub struct ReadLine {
+    prompt: String,
+}
+
+impl ReadLine {
+    pub fn new() -> Self {
+        Self {
+            prompt: String::new(),
+        }
+    }
+
+    pub fn prompt<A: ToString>(mut self, prompt: A) -> Self {
+        self.prompt = prompt.to_string();
+        self
+    }
+
+    pub fn run(&self) -> Option<String> {
+        terminal::enable_raw_mode().expect("Failed to set terminal to raw mode.");
+
+        let mut last_time = Instant::now();
+        let mut typed_chars = 0;
+        let mut read_so_far = String::new();
+        let mut in_paste = false;
+        let mut cur_pos: usize = 0;
+
+        print!("{}", self.prompt);
+        io::stdout().flush().unwrap();
+
+        loop {
+            if event::poll(Duration::from_millis(500)).unwrap() {
+                if let Event::Key(key_event) = event::read().unwrap() {
+                    let now = Instant::now();
+                    let elapsed = now.duration_since(last_time).as_millis();
+                    if elapsed > 30 {
+                        in_paste = false;
+                    }
+
+                    match key_event.code {
+                        KeyCode::Char(c) => {
+                            if typed_chars > 5 && elapsed < 10 {
+                                in_paste = true;
+                            }
+                            last_time = now;
+                            typed_chars += 1;
+
+                            read_so_far.insert(cur_pos, c);
+                            cur_pos += 1;
+
+                            write!(std::io::stdout(), "\r{}{}", self.prompt, read_so_far).unwrap();
+                            execute!(
+                                io::stdout(),
+                                cursor::MoveToColumn((self.prompt.len() + cur_pos) as u16)
+                            )
+                            .unwrap();
+                        }
+                        KeyCode::Left => {
+                            if cur_pos > 0 {
+                                cur_pos -= 1;
+                                execute!(io::stdout(), cursor::MoveLeft(1)).unwrap();
+                            }
+                        }
+                        KeyCode::Right => {
+                            if cur_pos < read_so_far.len() {
+                                cur_pos += 1;
+                                execute!(io::stdout(), cursor::MoveRight(1)).unwrap();
+                            }
+                        }
+                        KeyCode::Backspace => {
+                            if cur_pos > 0 {
+                                read_so_far.remove(cur_pos - 1);
+                                cur_pos -= 1;
+
+                                write!(std::io::stdout(), "\r{}{}", self.prompt, read_so_far).unwrap();
+                                print!(" ");
+                                execute!(
+                                    io::stdout(),
+                                    cursor::MoveToColumn((self.prompt.len() + cur_pos) as u16)
+                                )
+                                .unwrap();
+                                io::stdout().flush().unwrap();
+                            }
+                        }
+                        KeyCode::Delete => {
+                            if cur_pos < read_so_far.len() {
+                                read_so_far.remove(cur_pos);
+
+                                write!(std::io::stdout(), "\r{}{}", self.prompt, read_so_far).unwrap();
+                                print!(" ");
+                                execute!(
+                                    io::stdout(),
+                                    cursor::MoveToColumn((self.prompt.len() + cur_pos) as u16)
+                                )
+                                .unwrap();
+                            }
+                        }
+                        KeyCode::Enter => {
+                            print!("\r\n");
+                            io::stdout().flush().unwrap();
+
+                            if !in_paste {
+                                break;
+                            }
+                        }
+                        KeyCode::Esc => {
+                            read_so_far.clear();
+                            break;
+                        }
+                        _ => {}
+                    }
+                    io::stdout().flush().unwrap();
+                }
+            }
+        }
+        io::stdout().flush().unwrap();
+
+        terminal::disable_raw_mode().expect("Failed to remove terminal to raw mode.");
+        Some(read_so_far)
+    }
+}
+
 pub struct CLI;
 
 fn truncate_string(s: &str, max_len: usize) -> String {
@@ -237,106 +357,4 @@ impl CLI {
         selected_indices
     }
 
-    pub fn read_line(prompt: &str) -> Option<String> {
-        terminal::enable_raw_mode().expect("Failed to set terminal to raw mode.");
-
-        let mut last_time = Instant::now();
-        let mut typed_chars = 0;
-        let mut read_so_far = String::new();
-        let mut in_paste = false;
-        let mut cur_pos: usize = 0;
-
-        print!("{}", prompt);
-        io::stdout().flush().unwrap();
-
-        loop {
-            if event::poll(Duration::from_millis(500)).unwrap() {
-                if let Event::Key(key_event) = event::read().unwrap() {
-                    let now = Instant::now();
-                    let elapsed = now.duration_since(last_time).as_millis();
-                    if elapsed > 30 {
-                        in_paste = false;
-                    }
-
-                    match key_event.code {
-                        KeyCode::Char(c) => {
-                            if typed_chars > 5 && elapsed < 10 {
-                                in_paste = true;
-                            }
-                            last_time = now;
-                            typed_chars += 1;
-
-                            read_so_far.insert(cur_pos, c);
-                            cur_pos += 1;
-
-                            write!(std::io::stdout(), "\r{}{}", prompt, read_so_far).unwrap();
-                            execute!(
-                                io::stdout(),
-                                cursor::MoveToColumn((prompt.len() + cur_pos) as u16)
-                            )
-                            .unwrap();
-                        }
-                        KeyCode::Left => {
-                            if cur_pos > 0 {
-                                cur_pos -= 1;
-                                execute!(io::stdout(), cursor::MoveLeft(1)).unwrap();
-                            }
-                        }
-                        KeyCode::Right => {
-                            if cur_pos < read_so_far.len() {
-                                cur_pos += 1;
-                                execute!(io::stdout(), cursor::MoveRight(1)).unwrap();
-                            }
-                        }
-                        KeyCode::Backspace => {
-                            if cur_pos > 0 {
-                                read_so_far.remove(cur_pos - 1);
-                                cur_pos -= 1;
-
-                                write!(std::io::stdout(), "\r{}{}", prompt, read_so_far).unwrap();
-                                print!(" ");
-                                execute!(
-                                    io::stdout(),
-                                    cursor::MoveToColumn((prompt.len() + cur_pos) as u16)
-                                )
-                                .unwrap();
-                                io::stdout().flush().unwrap();
-                            }
-                        }
-                        KeyCode::Delete => {
-                            if cur_pos < read_so_far.len() {
-                                read_so_far.remove(cur_pos);
-
-                                write!(std::io::stdout(), "\r{}{}", prompt, read_so_far).unwrap();
-                                print!(" ");
-                                execute!(
-                                    io::stdout(),
-                                    cursor::MoveToColumn((prompt.len() + cur_pos) as u16)
-                                )
-                                .unwrap();
-                            }
-                        }
-                        KeyCode::Enter => {
-                            print!("\r\n");
-                            io::stdout().flush().unwrap();
-
-                            if !in_paste {
-                                break;
-                            }
-                        }
-                        KeyCode::Esc => {
-                            read_so_far.clear();
-                            break;
-                        }
-                        _ => {}
-                    }
-                    io::stdout().flush().unwrap();
-                }
-            }
-        }
-        io::stdout().flush().unwrap();
-
-        terminal::disable_raw_mode().expect("Failed to remove terminal to raw mode.");
-        Some(read_so_far)
-    }
 }

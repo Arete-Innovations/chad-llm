@@ -9,7 +9,7 @@ mod openai;
 mod response;
 mod system_prompt;
 
-use cli::CLI;
+use cli::{CLI, ReadLine};
 use clipboard::{ClipboardContext, ClipboardProvider};
 use openai::send_request;
 use std::cell::RefCell;
@@ -42,7 +42,7 @@ fn main() {
             }
         } else {
             {
-                input = CLI::read_line(&format!("{}> ", whoami::realname())).unwrap();
+                input = ReadLine::new().prompt(&format!("{}> ", whoami::realname())).run().unwrap();
                 //    .completion_with(&mut command_registry)
                 //    .history_with(&mut app.cli_history)
             }
@@ -84,7 +84,7 @@ fn main() {
                             std::io::stdout().flush().unwrap();
 
                             let additional_input =
-                                CLI::read_line("Add additional details").unwrap();
+                                ReadLine::new().prompt("Add additional details").run().unwrap();
 
                             // Aggregate the clipboard content and additional input
                             input.push_str(&paste_content);
