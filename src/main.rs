@@ -43,7 +43,7 @@ fn main() {
         } else {
             {
                 input = match ReadLine::new()
-                    .prompt(&format!("{}> ", whoami::realname()))
+                    .prompt(&format!("[$green]{} [$/]> ", whoami::realname()))
                     .completion(&command_registry)
                     .run()
                     {

@@ -10,6 +10,7 @@ pkgs.mkShell {
 		cargo
 		rustc
 		rust-analyzer
+		rustfmt
 		openssl
 		pkg-config
 		xorg.libxcb

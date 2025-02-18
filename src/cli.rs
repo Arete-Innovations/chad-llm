@@ -1,16 +1,16 @@
+use std::rc::Rc;
 use std::time::{Duration, Instant};
 use std::{
     env::{self, VarError},
     io::{self, IsTerminal, Write},
 };
-use std::rc::Rc;
 
 use crossterm::{
     cursor,
+    event::KeyModifiers,
     event::{self, Event, KeyCode},
     execute,
     terminal::{self, ClearType},
-    event::KeyModifiers,
 };
 use rand::{self, Rng};
 
@@ -34,7 +34,7 @@ impl<'a> ReadLine<'a> {
     }
 
     pub fn prompt<A: ToString>(mut self, prompt: A) -> Self {
-        self.prompt = prompt.to_string();
+        self.prompt = vari::format(&prompt.to_string());
         self
     }
 
@@ -44,7 +44,8 @@ impl<'a> ReadLine<'a> {
     }
 
     pub fn completion<C>(mut self, completion: &'a C) -> Self
-    where C: Completion
+    where
+        C: Completion,
     {
         self.completion = Some(completion);
         self
@@ -72,11 +73,54 @@ impl<'a> ReadLine<'a> {
                     }
 
                     match key_event.code {
-                        KeyCode::Char('c') if key_event.modifiers.contains(KeyModifiers::CONTROL) => {
+                        KeyCode::Char('c')
+                            if key_event.modifiers.contains(KeyModifiers::CONTROL) =>
+                        {
                             write!(std::io::stdout(), "^C\r\n").unwrap();
                             return None;
                         }
-                        KeyCode::Char('l') if key_event.modifiers.contains(KeyModifiers::CONTROL) => {
+                        KeyCode::Char('w') | KeyCode::Backspace
+                            if key_event.modifiers.contains(KeyModifiers::CONTROL) =>
+                        {
+                            if cur_pos > 0 {
+                                let mut delete_start = cur_pos;
+                                while delete_start > 0
+                                    && read_so_far
+                                        .chars()
+                                        .nth(delete_start - 1)
+                                        .map_or(false, |c| c.is_whitespace())
+                                {
+                                    delete_start -= 1;
+                                }
+                                while delete_start > 0
+                                    && read_so_far
+                                        .chars()
+                                        .nth(delete_start - 1)
+                                        .map_or(false, |c| !c.is_whitespace())
+                                {
+                                    delete_start -= 1;
+                                }
+
+                                read_so_far.replace_range(delete_start..cur_pos, "");
+                                cur_pos = delete_start;
+
+                                execute!(io::stdout(), terminal::Clear(ClearType::CurrentLine))
+                                    .unwrap();
+                                write!(io::stdout(), "\r{}{}", self.prompt, read_so_far).unwrap();
+                                execute!(
+                                    io::stdout(),
+                                    cursor::MoveToColumn(
+                                        (strip_ansi_escapes::strip(self.prompt.clone()).len()
+                                            + cur_pos)
+                                            as u16
+                                    )
+                                )
+                                .unwrap();
+                            }
+                        }
+                        KeyCode::Char('l')
+                            if key_event.modifiers.contains(KeyModifiers::CONTROL) =>
+                        {
                             CLI::clear();
                             write!(std::io::stdout(), "\r{}{}", self.prompt, read_so_far).unwrap();
                         }
@@ -91,9 +135,13 @@ impl<'a> ReadLine<'a> {
                             cur_pos += 1;
 
                             write!(std::io::stdout(), "\r{}{}", self.prompt, read_so_far).unwrap();
+
                             execute!(
                                 io::stdout(),
-                                cursor::MoveToColumn((self.prompt.len() + cur_pos) as u16)
+                                cursor::MoveToColumn(
+                                    (strip_ansi_escapes::strip(self.prompt.clone()).len() + cur_pos)
+                                        as u16
+                                )
                             )
                             .unwrap();
                         }
@@ -104,21 +152,83 @@ impl<'a> ReadLine<'a> {
                                 if let Some(result) = completion.get(&so_far) {
                                     cur_pos = result.len();
                                     read_so_far = result + &the_rest;
-                                    execute!(io::stdout(), terminal::Clear(ClearType::CurrentLine)).unwrap();
-                                    write!(std::io::stdout(), "\r{}{}", self.prompt, read_so_far).unwrap();
+                                    execute!(io::stdout(), terminal::Clear(ClearType::CurrentLine))
+                                        .unwrap();
+                                    write!(std::io::stdout(), "\r{}{}", self.prompt, read_so_far)
+                                        .unwrap();
                                 }
                             }
                         }
-                        KeyCode::Left => {
+                        KeyCode::Left if !key_event.modifiers.contains(KeyModifiers::CONTROL) => {
                             if cur_pos > 0 {
                                 cur_pos -= 1;
                                 execute!(io::stdout(), cursor::MoveLeft(1)).unwrap();
                             }
                         }
-                        KeyCode::Right => {
+                        KeyCode::Right if !key_event.modifiers.contains(KeyModifiers::CONTROL) => {
                             if cur_pos < read_so_far.len() {
                                 cur_pos += 1;
                                 execute!(io::stdout(), cursor::MoveRight(1)).unwrap();
+                            }
+                        }
+                        KeyCode::Left if key_event.modifiers.contains(KeyModifiers::CONTROL) => {
+                            if cur_pos > 0 {
+                                while cur_pos > 0
+                                    && read_so_far
+                                        .chars()
+                                        .nth(cur_pos - 1)
+                                        .map_or(false, |c| c.is_whitespace())
+                                {
+                                    cur_pos -= 1;
+                                }
+                                while cur_pos > 0
+                                    && read_so_far
+                                        .chars()
+                                        .nth(cur_pos - 1)
+                                        .map_or(false, |c| !c.is_whitespace())
+                                {
+                                    cur_pos -= 1;
+                                }
+
+                                execute!(
+                                    io::stdout(),
+                                    cursor::MoveToColumn(
+                                        (strip_ansi_escapes::strip(self.prompt.clone()).len()
+                                            + cur_pos)
+                                            as u16
+                                    )
+                                )
+                                .unwrap();
+                            }
+                        }
+                        KeyCode::Right if key_event.modifiers.contains(KeyModifiers::CONTROL) => {
+                            if cur_pos < read_so_far.len() {
+                                while cur_pos < read_so_far.len()
+                                    && read_so_far
+                                        .chars()
+                                        .nth(cur_pos)
+                                        .map_or(false, |c| !c.is_whitespace())
+                                {
+                                    cur_pos += 1;
+                                }
+                                while cur_pos < read_so_far.len()
+                                    && read_so_far
+                                        .chars()
+                                        .nth(cur_pos)
+                                        .map_or(false, |c| c.is_whitespace())
+                                {
+                                    cur_pos += 1;
+                                }
+
+                                execute!(
+                                    io::stdout(),
+                                    cursor::MoveToColumn(
+                                        (strip_ansi_escapes::strip(self.prompt.clone()).len()
+                                            + cur_pos)
+                                            as u16
+                                    )
+                                )
+                                .unwrap();
                             }
                         }
                         KeyCode::Backspace => {
@@ -126,11 +236,16 @@ impl<'a> ReadLine<'a> {
                                 read_so_far.remove(cur_pos - 1);
                                 cur_pos -= 1;
 
-                                write!(std::io::stdout(), "\r{}{}", self.prompt, read_so_far).unwrap();
+                                write!(std::io::stdout(), "\r{}{}", self.prompt, read_so_far)
+                                    .unwrap();
                                 print!(" ");
                                 execute!(
                                     io::stdout(),
-                                    cursor::MoveToColumn((self.prompt.len() + cur_pos) as u16)
+                                    cursor::MoveToColumn(
+                                        (strip_ansi_escapes::strip(self.prompt.clone()).len()
+                                            + cur_pos)
+                                            as u16
+                                    )
                                 )
                                 .unwrap();
                                 io::stdout().flush().unwrap();
@@ -140,11 +255,16 @@ impl<'a> ReadLine<'a> {
                             if cur_pos < read_so_far.len() {
                                 read_so_far.remove(cur_pos);
 
-                                write!(std::io::stdout(), "\r{}{}", self.prompt, read_so_far).unwrap();
+                                write!(std::io::stdout(), "\r{}{}", self.prompt, read_so_far)
+                                    .unwrap();
                                 print!(" ");
                                 execute!(
                                     io::stdout(),
-                                    cursor::MoveToColumn((self.prompt.len() + cur_pos) as u16)
+                                    cursor::MoveToColumn(
+                                        (strip_ansi_escapes::strip(self.prompt.clone()).len()
+                                            + cur_pos)
+                                            as u16
+                                    )
                                 )
                                 .unwrap();
                             }
@@ -317,6 +437,7 @@ impl CLI {
                     .replace("\r", "")
                     .replace("\t", " ");
                 let str = truncate_string(&str, terminal::size().unwrap().0 as usize - 10);
+                let str = strip_ansi_escapes::strip_str(str);
                 write!(std::io::stdout(), "{}\r\n", str).unwrap();
             }
             stdout.flush().unwrap();
@@ -398,5 +519,4 @@ impl CLI {
         selected_indices.sort_unstable();
         selected_indices
     }
-
 }
