@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 use std::{
     env::{self, VarError},
@@ -14,9 +14,37 @@ use crossterm::{
 };
 use rand::{self, Rng};
 
-pub struct ReadLine<'a> {
+pub trait History<T> {
+    fn read(&self, pos: usize) -> Option<String>;
+    fn write(&mut self, val: &T);
+}
+
+pub struct BasicHistory {
+    deque: VecDeque<String>,
+}
+
+impl BasicHistory {
+    pub fn new() -> Self {
+        Self {
+            deque: VecDeque::new(),
+        }
+    }
+}
+
+impl<T: ToString> History<T> for BasicHistory {
+    fn read(&self, pos: usize) -> Option<String> {
+        self.deque.get(pos).cloned()
+    }
+
+    fn write(&mut self, val: &T) {
+        let val = val.to_string();
+        self.deque.push_front(val);
+    }
+}
+
+pub struct ReadLine<'a, T> {
     prompt: String,
-    history: Option<Rc<Vec<String>>>,
+    history: Option<&'a mut dyn History<T>>,
     completion: Option<&'a dyn Completion>,
 }
 
@@ -24,7 +52,10 @@ pub trait Completion {
     fn get(&self, input: &str) -> Option<String>;
 }
 
-impl<'a> ReadLine<'a> {
+impl<'a, T> ReadLine<'a, T>
+where
+    T: std::str::FromStr,
+{
     pub fn new() -> Self {
         Self {
             prompt: String::new(),
@@ -38,7 +69,7 @@ impl<'a> ReadLine<'a> {
         self
     }
 
-    pub fn history(mut self, history: Rc<Vec<String>>) -> Self {
+    pub fn history(mut self, history: &'a mut dyn History<T>) -> Self {
         self.history = Some(history);
         self
     }
@@ -51,7 +82,10 @@ impl<'a> ReadLine<'a> {
         self
     }
 
-    pub fn run(&self) -> Option<String> {
+    pub fn run(&mut self) -> Option<T>
+    where
+        <T as std::str::FromStr>::Err: std::fmt::Debug,
+    {
         terminal::enable_raw_mode().expect("Failed to set terminal to raw mode.");
 
         let mut last_time = Instant::now();
@@ -59,6 +93,7 @@ impl<'a> ReadLine<'a> {
         let mut read_so_far = String::new();
         let mut in_paste = false;
         let mut cur_pos: usize = 0;
+        let mut hist_pos: isize = -1;
 
         print!("{}", self.prompt);
         io::stdout().flush().unwrap();
@@ -277,6 +312,38 @@ impl<'a> ReadLine<'a> {
                                 break;
                             }
                         }
+                        KeyCode::Up => {
+                            if let Some(hist) = &self.history {
+                                hist_pos += 1;
+                                if let Some(value) = hist.read(hist_pos as usize) {
+                                    cur_pos = value.len();
+                                    read_so_far = value;
+                                } else {
+                                    hist_pos -= 1;
+                                }
+                                execute!(io::stdout(), terminal::Clear(ClearType::CurrentLine))
+                                    .unwrap();
+                                write!(std::io::stdout(), "\r{}{}", self.prompt, read_so_far)
+                                    .unwrap();
+                            }
+                        }
+                        KeyCode::Down => {
+                            if let Some(hist) = &self.history {
+                                hist_pos -= 1;
+                                if let Some(value) = hist.read(hist_pos as usize) {
+                                    cur_pos = value.len();
+                                    read_so_far = value;
+                                } else {
+                                    read_so_far = "".to_owned();
+                                    cur_pos = 0;
+                                    hist_pos = -1;
+                                }
+                                execute!(io::stdout(), terminal::Clear(ClearType::CurrentLine))
+                                    .unwrap();
+                                write!(std::io::stdout(), "\r{}{}", self.prompt, read_so_far)
+                                    .unwrap();
+                            }
+                        }
                         _ => {}
                     }
                     io::stdout().flush().unwrap();
@@ -286,7 +353,14 @@ impl<'a> ReadLine<'a> {
         io::stdout().flush().unwrap();
 
         terminal::disable_raw_mode().expect("Failed to remove terminal to raw mode.");
-        Some(read_so_far)
+
+        let val = read_so_far.parse::<T>().unwrap();
+
+        if let Some(hist) = &mut self.history {
+            hist.write(&val);
+        }
+
+        Some(val)
     }
 }
 

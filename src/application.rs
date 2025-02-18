@@ -1,4 +1,4 @@
-use crate::cli::CLI;
+use crate::cli::{BasicHistory, CLI};
 use crate::history;
 use crate::openai;
 use crate::openai::AVAILABLE_MODELS;
@@ -14,7 +14,7 @@ use tokio::sync::Mutex;
 pub struct Application {
     pub tokio_rt: Runtime,
     pub context: openai::SharedContext,
-    //pub cli_history: BasicHistory,
+    pub cli_history: BasicHistory,
     pub session_history: History, // FIXME: Remove, we have SharedContext.
     pub code_blocks: Vec<String>,
     pub model: String,
@@ -33,7 +33,7 @@ impl Application {
         let mut app = Application {
             tokio_rt: Runtime::new().unwrap(),
             context: Arc::new(Mutex::new(Vec::new())),
-            //cli_history: BasicHistory::new().max_entries(99).no_duplicates(false),
+            cli_history: BasicHistory::new(),
             session_history: History::new(HISTORY_FILE),
             code_blocks: Vec::new(),
             model: AVAILABLE_MODELS[0].to_owned(),

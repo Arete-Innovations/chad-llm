@@ -42,15 +42,16 @@ fn main() {
             }
         } else {
             {
-                input = match ReadLine::new()
+                let mut app = gapp.borrow_mut();
+                input = match ReadLine::<String>::new()
                     .prompt(&format!("[$green]{} [$/]> ", whoami::realname()))
                     .completion(&command_registry)
+                    .history(&mut app.cli_history)
                     .run()
                 {
                     Some(x) => x,
                     None => continue,
                 };
-                //    .history_with(&mut app.cli_history)
             }
 
             // Save the input to history
@@ -89,7 +90,7 @@ fn main() {
                             print!("\n{}", paste_content); // Print the clipboard content
                             std::io::stdout().flush().unwrap();
 
-                            let additional_input = ReadLine::new()
+                            let additional_input = ReadLine::<String>::new()
                                 .prompt("Add additional details")
                                 .run()
                                 .unwrap();
