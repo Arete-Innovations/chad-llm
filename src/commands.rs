@@ -1,9 +1,9 @@
 use crate::application::{Application, HISTORY_FILE};
-use crate::cli::CLI;
+use crate::cli::{CLI, Completion};
 use crate::openai;
 
 use clipboard::{ClipboardContext, ClipboardProvider};
-//use fuzzy_matcher::clangd::fuzzy_match;
+use fuzzy_matcher::clangd::fuzzy_match;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -31,25 +31,25 @@ fn get_input_or_select<'a>(
     Some(available[v[0]].to_string())
 }
 
-//impl Completion for CommandRegistry {
-//    fn get(&self, input: &str) -> Option<String> {
-//        let inp = input.to_string();
-//        let inp = inp.strip_prefix("/")?;
-//        let mut cmds: Vec<(&str, i64)> = self
-//            .get_available_commands()
-//            .into_iter()
-//            .map(|cmd| (cmd, fuzzy_match(&cmd, &inp)))
-//            .filter(|(_, score)| score.is_some())
-//            .map(|(cmd, score)| (cmd, score.unwrap()))
-//            .collect();
-//        cmds.sort_by(|(_, a), (_, b)| a.cmp(b));
-//        if cmds.is_empty() {
-//            None
-//        } else {
-//            Some(format!("/{}", cmds[0].0.to_string()))
-//        }
-//    }
-//}
+impl Completion for CommandRegistry {
+    fn get(&self, input: &str) -> Option<String> {
+        let inp = input.to_string();
+        let inp = inp.strip_prefix("/")?;
+        let mut cmds: Vec<(&str, i64)> = self
+            .get_available_commands()
+            .into_iter()
+            .map(|cmd| (cmd, fuzzy_match(&cmd, &inp)))
+            .filter(|(_, score)| score.is_some())
+            .map(|(cmd, score)| (cmd, score.unwrap()))
+            .collect();
+        cmds.sort_by(|(_, a), (_, b)| a.cmp(b));
+        if cmds.is_empty() {
+            None
+        } else {
+            Some(format!("/{}", cmds[0].0.to_string()))
+        }
+    }
+}
 
 #[derive(Debug)]
 pub enum CommandError {

@@ -3,28 +3,50 @@ use std::{
     env::{self, VarError},
     io::{self, IsTerminal, Write},
 };
+use std::rc::Rc;
 
 use crossterm::{
     cursor,
     event::{self, Event, KeyCode},
     execute,
     terminal::{self, ClearType},
+    event::KeyModifiers,
 };
 use rand::{self, Rng};
 
-pub struct ReadLine {
+pub struct ReadLine<'a> {
     prompt: String,
+    history: Option<Rc<Vec<String>>>,
+    completion: Option<&'a dyn Completion>,
 }
 
-impl ReadLine {
+pub trait Completion {
+    fn get(&self, input: &str) -> Option<String>;
+}
+
+impl<'a> ReadLine<'a> {
     pub fn new() -> Self {
         Self {
             prompt: String::new(),
+            history: None,
+            completion: None,
         }
     }
 
     pub fn prompt<A: ToString>(mut self, prompt: A) -> Self {
         self.prompt = prompt.to_string();
+        self
+    }
+
+    pub fn history(mut self, history: Rc<Vec<String>>) -> Self {
+        self.history = Some(history);
+        self
+    }
+
+    pub fn completion<C>(mut self, completion: &'a C) -> Self
+    where C: Completion
+    {
+        self.completion = Some(completion);
         self
     }
 
@@ -50,6 +72,14 @@ impl ReadLine {
                     }
 
                     match key_event.code {
+                        KeyCode::Char('c') if key_event.modifiers.contains(KeyModifiers::CONTROL) => {
+                            write!(std::io::stdout(), "^C\r\n").unwrap();
+                            return None;
+                        }
+                        KeyCode::Char('l') if key_event.modifiers.contains(KeyModifiers::CONTROL) => {
+                            CLI::clear();
+                            write!(std::io::stdout(), "\r{}{}", self.prompt, read_so_far).unwrap();
+                        }
                         KeyCode::Char(c) => {
                             if typed_chars > 5 && elapsed < 10 {
                                 in_paste = true;
@@ -66,6 +96,18 @@ impl ReadLine {
                                 cursor::MoveToColumn((self.prompt.len() + cur_pos) as u16)
                             )
                             .unwrap();
+                        }
+                        KeyCode::Tab => {
+                            if let Some(completion) = self.completion {
+                                let so_far: String = read_so_far.chars().take(cur_pos).collect();
+                                let the_rest: String = read_so_far.chars().skip(cur_pos).collect();
+                                if let Some(result) = completion.get(&so_far) {
+                                    cur_pos = result.len();
+                                    read_so_far = result + &the_rest;
+                                    execute!(io::stdout(), terminal::Clear(ClearType::CurrentLine)).unwrap();
+                                    write!(std::io::stdout(), "\r{}{}", self.prompt, read_so_far).unwrap();
+                                }
+                            }
                         }
                         KeyCode::Left => {
                             if cur_pos > 0 {

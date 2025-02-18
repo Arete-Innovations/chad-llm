@@ -42,8 +42,14 @@ fn main() {
             }
         } else {
             {
-                input = ReadLine::new().prompt(&format!("{}> ", whoami::realname())).run().unwrap();
-                //    .completion_with(&mut command_registry)
+                input = match ReadLine::new()
+                    .prompt(&format!("{}> ", whoami::realname()))
+                    .completion(&command_registry)
+                    .run()
+                    {
+                        Some(x) => x,
+                        None => continue,
+                    };
                 //    .history_with(&mut app.cli_history)
             }
 
