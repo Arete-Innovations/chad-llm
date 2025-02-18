@@ -277,10 +277,6 @@ impl<'a> ReadLine<'a> {
                                 break;
                             }
                         }
-                        KeyCode::Esc => {
-                            read_so_far.clear();
-                            break;
-                        }
                         _ => {}
                     }
                     io::stdout().flush().unwrap();
@@ -456,7 +452,7 @@ impl CLI {
             if event::poll(Duration::from_millis(500)).unwrap() {
                 if let Event::Key(key_event) = event::read().unwrap() {
                     match key_event.code {
-                        KeyCode::Up => {
+                        KeyCode::Up | KeyCode::Char('k') => {
                             if current_index > 0 {
                                 current_index -= 1;
                                 if current_index < offset {
@@ -464,7 +460,7 @@ impl CLI {
                                 }
                             }
                         }
-                        KeyCode::Down => {
+                        KeyCode::Down | KeyCode::Char('j') => {
                             if current_index < options.len() - 1 {
                                 current_index += 1;
                                 if current_index >= offset + visible_count {
@@ -489,6 +485,12 @@ impl CLI {
                             break;
                         }
                         KeyCode::Esc => {
+                            selected_indices.clear();
+                            break;
+                        }
+                        KeyCode::Char('c')
+                            if key_event.modifiers.contains(KeyModifiers::CONTROL) =>
+                        {
                             selected_indices.clear();
                             break;
                         }
