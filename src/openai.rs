@@ -18,10 +18,13 @@ pub fn set_system_prompt(context: &mut Vec<Message>, content: &str) {
         context.remove(0);
     }
     if !content.is_empty() {
-        context.insert(0, Message {
-            role: "system".to_owned(),
-            content: content.to_owned()
-        });
+        context.insert(
+            0,
+            Message {
+                role: "system".to_owned(),
+                content: content.to_owned(),
+            },
+        );
     }
 }
 
@@ -49,7 +52,15 @@ struct Delta {
     content: Option<String>,
 }
 
-pub static AVAILABLE_MODELS: &'static [&'static str] = &["chatgpt-4o-latest", "gpt-4o", "gpt-4o-mini", "o1", "o1-mini", "o3-mini", "o1-preview"];
+pub static AVAILABLE_MODELS: &'static [&'static str] = &[
+    "chatgpt-4o-latest",
+    "gpt-4o",
+    "gpt-4o-mini",
+    "o1",
+    "o1-mini",
+    "o3-mini",
+    "o1-preview",
+];
 
 pub async fn get_models() -> Option<Vec<String>> {
     #[derive(Deserialize)]

@@ -9,7 +9,7 @@ mod openai;
 mod response;
 mod system_prompt;
 
-use cli::{CLI, ReadLine};
+use cli::{ReadLine, CLI};
 use clipboard::{ClipboardContext, ClipboardProvider};
 use openai::send_request;
 use std::cell::RefCell;
@@ -46,10 +46,10 @@ fn main() {
                     .prompt(&format!("[$green]{} [$/]> ", whoami::realname()))
                     .completion(&command_registry)
                     .run()
-                    {
-                        Some(x) => x,
-                        None => continue,
-                    };
+                {
+                    Some(x) => x,
+                    None => continue,
+                };
                 //    .history_with(&mut app.cli_history)
             }
 
@@ -89,8 +89,10 @@ fn main() {
                             print!("\n{}", paste_content); // Print the clipboard content
                             std::io::stdout().flush().unwrap();
 
-                            let additional_input =
-                                ReadLine::new().prompt("Add additional details").run().unwrap();
+                            let additional_input = ReadLine::new()
+                                .prompt("Add additional details")
+                                .run()
+                                .unwrap();
 
                             // Aggregate the clipboard content and additional input
                             input.push_str(&paste_content);

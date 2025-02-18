@@ -1,5 +1,5 @@
 use crate::application::{Application, HISTORY_FILE};
-use crate::cli::{CLI, Completion};
+use crate::cli::{Completion, CLI};
 use crate::openai;
 
 use clipboard::{ClipboardContext, ClipboardProvider};

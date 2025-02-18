@@ -20,4 +20,3 @@ pub struct Choice {
 pub struct Delta {
     pub content: Option<String>,
 }
-
