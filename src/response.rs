@@ -11,6 +11,7 @@ pub async fn process_response(
     tokio::pin!(stream);
 
     let mut in_code_block = false;
+    let mut language_reading = false;
     let mut language = String::new();
     let mut full_response = String::new();
     let mut current_code_block_content = String::new();
@@ -23,7 +24,14 @@ pub async fn process_response(
                 let mut chars = content.chars().peekable();
 
                 while let Some(ch) = chars.next() {
-                    if ch == '`' {
+                    if language_reading {
+                        if ch == '\n' {
+                            language_reading = false;
+                        } else {
+                            language.push(ch);
+                            in_code_block = true;
+                        }
+                    } else if ch == '`' {
                         tick_count += 1;
                         if tick_count == 3 {
                             tick_count = 0;
@@ -52,6 +60,7 @@ pub async fn process_response(
                                 language.clear();
                             } else {
                                 in_code_block = true;
+                                language_reading = true;
                                 language.clear();
                             }
                         }
