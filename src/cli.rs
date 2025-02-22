@@ -491,6 +491,7 @@ impl CLI {
             clear(stdout, visible_count);
 
             for i in offset..(offset + visible_count).min(options.len()) {
+                execute!(io::stdout(), terminal::Clear(ClearType::CurrentLine)).unwrap();
                 if i == current_index {
                     print!("> ");
                 } else {

@@ -42,11 +42,18 @@ pub async fn process_response(
 
                                 println!("```{}", language);
                                 if stdout_is_terminal {
+                                    let mut language = language.trim().to_owned();
+                                    if language == "csharp" {
+                                        language = "c#".to_owned();
+                                    } else if language == "fsharp" {
+                                        language = "f#".to_owned();
+                                    }
+
                                     let mut pp = PrettyPrinter::new();
                                     pp.input_from_bytes(current_code_block_content.as_bytes())
                                         .colored_output(true);
 
-                                    if !language.trim().is_empty() {
+                                    if !language.is_empty() {
                                         pp.language(&language);
                                     }
 
