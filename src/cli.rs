@@ -454,7 +454,6 @@ impl CLI {
         terminal::enable_raw_mode().expect("Failed to set terminal to raw mode.");
 
         let mut selected_indices: Vec<usize> = selected.to_vec();
-        println!("selected_indices: {:?}", selected_indices);
         let mut current_index = selected.first().copied().unwrap_or(0);
         let visible_count = 5.min(options.len());
         write!(std::io::stdout(), "{}\r", prompt).unwrap();

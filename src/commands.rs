@@ -153,14 +153,15 @@ impl Command for CommandCopy {
         }
 
         let selections: Vec<&str> = app.code_blocks.iter().map(|s| s.as_str()).collect();
-        let selection = *CLI::select("Select code block to copy", &selections, true, &[0])
-            .get(0)
-            .unwrap_or(&0);
+        let res = CLI::select("Select code block to copy", &selections, false, &[]);
+
+        let mut selection = String::new();
+        for i in res {
+            selection.push_str(&format!("{}\n", selections[i]));
+        }
 
         let mut clipboard: ClipboardContext = ClipboardProvider::new().unwrap();
-        clipboard
-            .set_contents(app.code_blocks[selection].clone())
-            .unwrap();
+        clipboard.set_contents(selection).unwrap();
         print!("Code block copied to clipboard\r\n");
         Ok(())
     }
