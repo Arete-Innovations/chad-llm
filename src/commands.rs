@@ -33,21 +33,12 @@ fn get_input_or_select<'a>(
 
 impl Completion for CommandRegistry {
     fn get(&self, input: &str) -> Option<String> {
-        let inp = input.to_string();
-        let inp = inp.strip_prefix("/")?;
-        let mut cmds: Vec<(&str, i64)> = self
-            .get_available_commands()
-            .into_iter()
-            .map(|cmd| (cmd, fuzzy_match(&cmd, &inp)))
-            .filter(|(_, score)| score.is_some())
-            .map(|(cmd, score)| (cmd, score.unwrap()))
-            .collect();
-        cmds.sort_by(|(_, a), (_, b)| a.cmp(b));
-        if cmds.is_empty() {
-            None
-        } else {
-            Some(format!("/{}", cmds[0].0.to_string()))
-        }
+        let inp = input.strip_prefix("/")?;
+        self.get_available_commands()
+            .iter()
+            .filter_map(|cmd| fuzzy_match(cmd, inp).map(|score| (cmd, score)))
+            .max_by_key(|&(_, score)| score)
+            .map(|(cmd, _)| format!("/{}", cmd))
     }
 }
 
