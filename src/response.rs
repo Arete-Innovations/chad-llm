@@ -44,7 +44,6 @@ pub async fn process_response(
                                     in_code_block = false;
                                     code_blocks.push(current_code_block_content.clone());
 
-                                    println!("```{}", language);
                                     if stdout_is_terminal {
                                         let mut language = language.trim().to_owned();
                                         if language == "csharp" {
@@ -65,7 +64,6 @@ pub async fn process_response(
                                     } else {
                                         println!("{}", current_code_block_content);
                                     }
-                                    println!("```");
 
                                     current_code_block_content.clear();
                                     language.clear();
