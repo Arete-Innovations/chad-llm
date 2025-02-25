@@ -106,6 +106,7 @@ impl CommandRegistry {
         self.register_command("system_edit", CommandSystemEdit);
         self.register_command("system_remove", CommandSystemRemove);
         self.register_command("system_use", CommandSystemUse);
+        self.register_command("markdown", CommandMarkdown);
     }
 
     pub fn execute_command(
@@ -439,5 +440,26 @@ impl Command for CommandSystemUse {
         });
 
         Ok(())
+    }
+}
+
+struct CommandMarkdown;
+impl Command for CommandMarkdown {
+    fn handle_command(
+        &self,
+        _registry: &CommandRegistry,
+        _args: Vec<&str>,
+        app: Rc<RefCell<Application>>,
+    ) -> Result<(), CommandError> {
+        let mut app = app.borrow_mut();
+        app.markdown = !app.markdown;
+        println!(
+            "Markdown parsing is now {}.",
+            match app.markdown {
+                true => "enabled",
+                false => "disabled",
+            }
+        );
+        return Ok(());
     }
 }

@@ -20,6 +20,7 @@ pub struct Application {
     pub model: String,
     pub system_prompts: SystemPrompts,
     pub active_system_prompt: String,
+    pub markdown: bool,
     cli: CLI,
 }
 
@@ -39,6 +40,7 @@ impl Application {
             model: AVAILABLE_MODELS[0].to_owned(),
             system_prompts: SystemPrompts::new(),
             active_system_prompt: "".to_owned(),
+            markdown: true,
             cli: CLI::new(),
         };
         app.active_system_prompt = match app

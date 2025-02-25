@@ -133,6 +133,7 @@ fn main() {
                 let response = app.tokio_rt.block_on(response::process_response(
                     Box::pin(stream),
                     &mut code_blocks,
+                    !app.markdown,
                 ));
 
                 app.code_blocks = code_blocks;
