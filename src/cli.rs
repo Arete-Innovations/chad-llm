@@ -454,6 +454,7 @@ impl CLI {
         terminal::enable_raw_mode().expect("Failed to set terminal to raw mode.");
 
         let mut selected_indices: Vec<usize> = selected.to_vec();
+        println!("selected_indices: {:?}", selected_indices);
         let mut current_index = selected.first().copied().unwrap_or(0);
         let visible_count = 5.min(options.len());
         write!(std::io::stdout(), "{}\r", prompt).unwrap();
@@ -475,9 +476,7 @@ impl CLI {
                 )
                 .unwrap();
             }
-            for _ in 0..visible_count {
-                execute!(stdout, cursor::MoveUp(1)).unwrap();
-            }
+            execute!(stdout, cursor::MoveUp(visible_count as u16)).unwrap();
         }
 
         fn draw<T: ToString>(
@@ -566,7 +565,6 @@ impl CLI {
                         KeyCode::Char('c')
                             if key_event.modifiers.contains(KeyModifiers::CONTROL) =>
                         {
-                            selected_indices.clear();
                             break;
                         }
                         _ => {}
