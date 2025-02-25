@@ -455,7 +455,7 @@ impl CLI {
 
         let mut selected_indices: Vec<usize> = selected.to_vec();
         let mut current_index = selected.first().copied().unwrap_or(0);
-        let visible_count = 5.min(options.len());
+        let visible_count = 10.min(options.len());
         write!(std::io::stdout(), "{}\r", prompt).unwrap();
 
         for _ in 0..=visible_count {
