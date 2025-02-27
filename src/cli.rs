@@ -1,3 +1,4 @@
+use fuzzy_matcher::clangd::fuzzy_match;
 use std::ascii::AsciiExt;
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
@@ -447,7 +448,7 @@ impl CLI {
         }
     }
 
-    pub fn select<T: ToString>(
+    pub fn select<T: ToString + std::fmt::Debug>(
         prompt: &str,
         options: &[T],
         single: bool,
@@ -481,19 +482,44 @@ impl CLI {
             execute!(stdout, cursor::MoveUp(visible_count as u16)).unwrap();
         }
 
-        fn draw<T: ToString>(
+        fn draw<T: ToString + std::fmt::Debug>(
             stdout: &mut io::Stdout,
-            options: &[T],
+            options_raw: &[T],
             current_index: usize,
             selected_indices: &[usize],
-            offset: usize,
+            offset_raw: usize,
             visible_count: usize,
             query: String,
         ) {
             clear(stdout, visible_count);
 
-            for i in offset..(offset + visible_count).min(options.len()) {
+            let mut offset = offset_raw;
+
+            let options: Vec<(usize, String)>;
+            if query.is_empty() {
+                options = options_raw
+                    .iter()
+                    .enumerate()
+                    .map(|(i, v)| (i, v.to_string()))
+                    .collect();
+            } else {
+                options = options_raw
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, s)| {
+                        let res = fuzzy_match(&s.to_string(), &query);
+                        let res = res.filter(|&score| score > 0);
+                        let res = res.map(|score| (i, s, score));
+                        res
+                    })
+                    .map(|(i, s, _)| (i, s.to_string()))
+                    .collect();
+                offset = 0;
+            }
+
+            for j in offset..(offset + visible_count).min(options.len()) {
                 execute!(io::stdout(), terminal::Clear(ClearType::CurrentLine)).unwrap();
+                let i = options[j].0;
                 if i == current_index {
                     print!("> ");
                 } else {
@@ -504,8 +530,8 @@ impl CLI {
                 } else {
                     print!("[ ] ");
                 }
-                let str = options[i]
-                    .to_string()
+                let str = options[j]
+                    .1
                     .replace("\n", "")
                     .replace("\r", "")
                     .replace("\t", " ");
