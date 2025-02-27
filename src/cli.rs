@@ -1,3 +1,4 @@
+use std::ascii::AsciiExt;
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 use std::{
@@ -5,6 +6,7 @@ use std::{
     io::{self, IsTerminal, Write},
 };
 
+use crossterm::cursor::MoveUp;
 use crossterm::{
     cursor,
     event::KeyModifiers,
@@ -455,6 +457,7 @@ impl CLI {
 
         let mut selected_indices: Vec<usize> = selected.to_vec();
         let mut current_index = selected.first().copied().unwrap_or(0);
+        let mut query = String::new();
         let visible_count = 10.min(options.len());
         write!(std::io::stdout(), "{}\r", prompt).unwrap();
 
@@ -485,6 +488,7 @@ impl CLI {
             selected_indices: &[usize],
             offset: usize,
             visible_count: usize,
+            query: String,
         ) {
             clear(stdout, visible_count);
 
@@ -509,6 +513,10 @@ impl CLI {
                 let str = strip_ansi_escapes::strip_str(str);
                 write!(std::io::stdout(), "{}\r\n", str).unwrap();
             }
+            if !query.is_empty() {
+                execute!(io::stdout(), terminal::Clear(ClearType::CurrentLine)).unwrap();
+                print!("\rQuery: {}\r", query);
+            }
             stdout.flush().unwrap();
         }
 
@@ -519,13 +527,14 @@ impl CLI {
             &selected_indices,
             offset,
             visible_count,
+            query.clone(),
         );
 
         loop {
             if event::poll(Duration::from_millis(500)).unwrap() {
                 if let Event::Key(key_event) = event::read().unwrap() {
                     match key_event.code {
-                        KeyCode::Up | KeyCode::Char('k') => {
+                        KeyCode::Up => {
                             if current_index > 0 {
                                 current_index -= 1;
                                 if current_index < offset {
@@ -533,7 +542,7 @@ impl CLI {
                                 }
                             }
                         }
-                        KeyCode::Down | KeyCode::Char('j') => {
+                        KeyCode::Down => {
                             if current_index < options.len() - 1 {
                                 current_index += 1;
                                 if current_index >= offset + visible_count {
@@ -561,10 +570,19 @@ impl CLI {
                             selected_indices.clear();
                             break;
                         }
-                        KeyCode::Char('c')
-                            if key_event.modifiers.contains(KeyModifiers::CONTROL) =>
-                        {
-                            break;
+                        KeyCode::Backspace => {
+                            if !query.is_empty() {
+                                query.pop();
+                            }
+                            if key_event.modifiers.contains(KeyModifiers::CONTROL) {
+                                query.clear();
+                            }
+                        }
+                        KeyCode::Char(ch) => {
+                            if ch == 'c' && key_event.modifiers.contains(KeyModifiers::CONTROL) {
+                                break;
+                            }
+                            query.push(ch);
                         }
                         _ => {}
                     }
@@ -576,6 +594,7 @@ impl CLI {
                         &selected_indices,
                         offset,
                         visible_count,
+                        query.clone(),
                     );
                 }
             }
