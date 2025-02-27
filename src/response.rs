@@ -81,7 +81,7 @@ pub async fn process_response(
                                     language.clear();
                                 }
                             }
-                        } else if ch == '*' || ch == '_' {
+                        } else if !in_code_block && (ch == '*' || ch == '_') {
                             if text_effected {
                                 star_cnt -= 1;
                                 if star_cnt == 0 {
@@ -100,7 +100,7 @@ pub async fn process_response(
                                     print!("\x1b[0;1;3m");
                                 }
                             }
-                        } else if ch == '#' {
+                        } else if !in_code_block && ch == '#' {
                             print!("\x1b[1m#");
                             next_newline_reset = true;
                         } else {
