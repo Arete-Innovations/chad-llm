@@ -17,6 +17,9 @@ pub async fn process_response(
     let mut full_response = String::new();
     let mut current_code_block_content = String::new();
     let mut tick_count = 0;
+    let mut star_cnt = 0;
+    let mut in_effect = false;
+    let mut text_effected = false;
     let stdout_is_terminal = std::io::stdout().is_terminal();
 
     while let Some(chunk) = stream.next().await {
@@ -73,7 +76,30 @@ pub async fn process_response(
                                     language.clear();
                                 }
                             }
+                        } else if ch == '*' || ch == '_' {
+                            if text_effected {
+                                star_cnt -= 1;
+                                if star_cnt == 0 {
+                                    in_effect = false;
+                                    print!("\x1b[0m");
+                                    text_effected = false;
+                                }
+                            } else {
+                                star_cnt += 1;
+                                in_effect = true;
+                                if star_cnt == 1 {
+                                    print!("\x1b[0;3m");
+                                } else if star_cnt == 2 {
+                                    print!("\x1b[0;1m");
+                                } else if star_cnt == 3 {
+                                    print!("\x1b[0;1;3m");
+                                }
+                            }
                         } else {
+                            if in_effect {
+                                text_effected = true;
+                            }
+
                             if tick_count > 0 {
                                 full_response.push_str(&"`".repeat(tick_count));
                                 if stdout_is_terminal {
