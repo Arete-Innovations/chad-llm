@@ -20,6 +20,7 @@ pub async fn process_response(
     let mut star_cnt = 0;
     let mut in_effect = false;
     let mut text_effected = false;
+    let mut next_newline_reset = true;
     let stdout_is_terminal = std::io::stdout().is_terminal();
 
     while let Some(chunk) = stream.next().await {
@@ -31,6 +32,10 @@ pub async fn process_response(
                     let mut chars = content.chars().peekable();
 
                     while let Some(ch) = chars.next() {
+                        if ch == '\n' && next_newline_reset {
+                            print!("\x1b[0m");
+                        }
+
                         if language_reading {
                             if ch == '\n' {
                                 language_reading = false;
@@ -95,6 +100,9 @@ pub async fn process_response(
                                     print!("\x1b[0;1;3m");
                                 }
                             }
+                        } else if ch == '#' {
+                            print!("\x1b[1m#");
+                            next_newline_reset = true;
                         } else {
                             if in_effect {
                                 text_effected = true;
