@@ -623,6 +623,15 @@ impl CLI {
                             query.push(ch);
                             current_pos = 0;
                             offset = 0;
+                            draw(
+                                &mut stdout,
+                                &filtered_options,
+                                current_pos,
+                                &selected_indices,
+                                offset,
+                                visible_count,
+                                &query,
+                            );
                         }
                         _ => {}
                     }
