@@ -457,7 +457,7 @@ impl CLI {
         terminal::enable_raw_mode().expect("Failed to set terminal to raw mode.");
 
         let mut selected_indices: Vec<usize> = selected.to_vec();
-        let mut current_index = selected.first().copied().unwrap_or(0);
+        let mut current_pos = selected.first().copied().unwrap_or(0);
         let mut query = String::new();
         let visible_count = 10.min(options.len());
         write!(std::io::stdout(), "{}\r", prompt).unwrap();
@@ -466,7 +466,7 @@ impl CLI {
             print!("\r\n");
         }
 
-        let mut offset = current_index.saturating_sub(visible_count - 1);
+        let mut offset = current_pos.saturating_sub(visible_count - 1);
         let mut stdout = io::stdout();
 
         fn clear(stdout: &mut io::Stdout, visible_count: usize) {
@@ -482,62 +482,59 @@ impl CLI {
             execute!(stdout, cursor::MoveUp(visible_count as u16)).unwrap();
         }
 
-        fn draw<T: ToString + std::fmt::Debug>(
-            stdout: &mut io::Stdout,
+        fn get_filtered_options<T: ToString + std::fmt::Debug>(
             options_raw: &[T],
-            current_index: usize,
-            selected_indices: &[usize],
-            offset_raw: usize,
-            visible_count: usize,
-            query: String,
-        ) {
-            clear(stdout, visible_count);
-
-            let mut offset = offset_raw;
-
-            let options: Vec<(usize, String)>;
+            query: &str,
+        ) -> Vec<(usize, String)> {
             if query.is_empty() {
-                options = options_raw
+                options_raw
                     .iter()
                     .enumerate()
                     .map(|(i, v)| (i, v.to_string()))
-                    .collect();
+                    .collect()
             } else {
-                options = options_raw
+                options_raw
                     .iter()
                     .enumerate()
                     .filter_map(|(i, s)| {
-                        let res = fuzzy_match(&s.to_string(), &query);
-                        let res = res.filter(|&score| score > 0);
-                        let res = res.map(|score| (i, s, score));
-                        res
+                        fuzzy_match(&s.to_string(), query)
+                            .filter(|&score| score > 0)
+                            .map(|_| (i, s.to_string()))
                     })
-                    .map(|(i, s, _)| (i, s.to_string()))
-                    .collect();
-                offset = 0;
+                    .collect()
             }
+        }
 
-            for j in offset..(offset + visible_count).min(options.len()) {
+        fn draw(
+            stdout: &mut io::Stdout,
+            filtered_options: &[(usize, String)],
+            current_pos: usize,
+            selected_indices: &[usize],
+            offset: usize,
+            visible_count: usize,
+            query: &str,
+        ) {
+            clear(stdout, visible_count);
+            for j in offset..(offset + visible_count).min(filtered_options.len()) {
                 execute!(io::stdout(), terminal::Clear(ClearType::CurrentLine)).unwrap();
-                let i = options[j].0;
-                if i == current_index {
+                let (orig_idx, ref option_str) = filtered_options[j];
+                if j == current_pos {
                     print!("> ");
                 } else {
                     print!("  ");
                 }
-                if selected_indices.contains(&i) {
+                if selected_indices.contains(&orig_idx) {
                     print!("[x] ");
                 } else {
                     print!("[ ] ");
                 }
-                let str = options[j]
-                    .1
+                let s = option_str
                     .replace("\n", "")
                     .replace("\r", "")
                     .replace("\t", " ");
-                let str = truncate_string(&str, terminal::size().unwrap().0 as usize - 10);
-                let str = strip_ansi_escapes::strip_str(str);
-                write!(std::io::stdout(), "{}\r\n", str).unwrap();
+                let s = truncate_string(&s, terminal::size().unwrap().0 as usize - 10);
+                let s = strip_ansi_escapes::strip_str(s);
+                write!(std::io::stdout(), "{}\r\n", s).unwrap();
             }
             if !query.is_empty() {
                 execute!(io::stdout(), terminal::Clear(ClearType::CurrentLine)).unwrap();
@@ -546,49 +543,62 @@ impl CLI {
             stdout.flush().unwrap();
         }
 
-        draw(
-            &mut stdout,
-            options,
-            current_index,
-            &selected_indices,
-            offset,
-            visible_count,
-            query.clone(),
-        );
-
         loop {
+            let filtered_options = get_filtered_options(options, &query);
+            if filtered_options.is_empty() {
+                current_pos = 0;
+                offset = 0;
+            } else if current_pos >= filtered_options.len() {
+                current_pos = filtered_options.len() - 1;
+                offset = current_pos.saturating_sub(visible_count - 1);
+            }
+
+            draw(
+                &mut stdout,
+                &filtered_options,
+                current_pos,
+                &selected_indices,
+                offset,
+                visible_count,
+                &query,
+            );
+
             if event::poll(Duration::from_millis(500)).unwrap() {
                 if let Event::Key(key_event) = event::read().unwrap() {
                     match key_event.code {
                         KeyCode::Up => {
-                            if current_index > 0 {
-                                current_index -= 1;
-                                if current_index < offset {
-                                    offset = current_index;
+                            if current_pos > 0 {
+                                current_pos -= 1;
+                                if current_pos < offset {
+                                    offset = current_pos;
                                 }
                             }
                         }
                         KeyCode::Down => {
-                            if current_index < options.len() - 1 {
-                                current_index += 1;
-                                if current_index >= offset + visible_count {
-                                    offset = current_index - visible_count + 1;
+                            if current_pos < filtered_options.len().saturating_sub(1) {
+                                current_pos += 1;
+                                if current_pos >= offset + visible_count {
+                                    offset = current_pos - visible_count + 1;
                                 }
                             }
                         }
                         KeyCode::Char(' ') => {
-                            if single {
-                                selected_indices.clear();
-                                selected_indices.push(current_index);
-                            } else if selected_indices.contains(&current_index) {
-                                selected_indices.retain(|&x| x != current_index);
-                            } else {
-                                selected_indices.push(current_index);
+                            if let Some((orig_idx, _)) = filtered_options.get(current_pos) {
+                                if single {
+                                    selected_indices.clear();
+                                    selected_indices.push(*orig_idx);
+                                } else if selected_indices.contains(orig_idx) {
+                                    selected_indices.retain(|&x| x != *orig_idx);
+                                } else {
+                                    selected_indices.push(*orig_idx);
+                                }
                             }
                         }
                         KeyCode::Enter => {
-                            if selected_indices.is_empty() && single {
-                                selected_indices.push(current_index);
+                            if single && selected_indices.is_empty() {
+                                if let Some((orig_idx, _)) = filtered_options.get(current_pos) {
+                                    selected_indices.push(*orig_idx);
+                                }
                             }
                             break;
                         }
@@ -599,9 +609,11 @@ impl CLI {
                         KeyCode::Backspace => {
                             if !query.is_empty() {
                                 query.pop();
+                                current_pos = 0;
                             }
                             if key_event.modifiers.contains(KeyModifiers::CONTROL) {
                                 query.clear();
+                                current_pos = 0;
                             }
                         }
                         KeyCode::Char(ch) => {
@@ -609,19 +621,11 @@ impl CLI {
                                 break;
                             }
                             query.push(ch);
+                            current_pos = 0;
+                            offset = 0;
                         }
                         _ => {}
                     }
-
-                    draw(
-                        &mut stdout,
-                        options,
-                        current_index,
-                        &selected_indices,
-                        offset,
-                        visible_count,
-                        query.clone(),
-                    );
                 }
             }
         }
@@ -630,7 +634,11 @@ impl CLI {
             execute!(std::io::stdout(), cursor::MoveUp(1)).unwrap();
         }
 
-        clear(&mut std::io::stdout(), visible_count + 1);
+        if !query.is_empty() {
+            clear(&mut std::io::stdout(), visible_count + 2);
+        } else {
+            clear(&mut std::io::stdout(), visible_count + 1);
+        }
         stdout.flush().unwrap();
 
         terminal::disable_raw_mode().expect("Failed to remove terminal to raw mode.");
